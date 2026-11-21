@@ -57,10 +57,10 @@ index 540a66b..d600995 100644
          vocab_size = self.hparams.get("vocab_size", len(tokenizer.vocab))
          assert max(tokenizer.vocab.values()) < vocab_size
 diff --git a/conversion/qwen.py b/conversion/qwen.py
-index 3765354..fe0b8a9 100644
+index 3765354..1d56dbd 100644
 --- a/conversion/qwen.py
 +++ b/conversion/qwen.py
-@@ -801,6 +801,80 @@ class MiniCPMOCRSeqClsModel(Qwen3_5TextModel):
+@@ -801,6 +801,81 @@ class MiniCPMOCRSeqClsModel(Qwen3_5TextModel):
          yield from super().modify_tensors(data_torch, name, bid)
  
  
@@ -96,6 +96,7 @@ index 3765354..fe0b8a9 100644
 +@ModelBase.register("JoyFoxJevModel")
 +@ModelBase.example("joyfox/Qwen3.5-0.8B-JEV")
 +class JoyFoxJevModel(Qwen3_5TextModel):
++    model_arch = gguf.MODEL_ARCH.QWEN35
 +    no_mtp = True
 +
 +    def __init__(self, dir_model, *args, **kwargs):
