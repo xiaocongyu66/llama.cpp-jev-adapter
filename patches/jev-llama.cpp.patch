@@ -404,7 +404,7 @@ index 0f49b8a..06b6c7e 100644
      struct graph : public llm_build_delta_net_base {
          graph(const llm_graph_params & params);
 diff --git a/src/models/qwen35.cpp b/src/models/qwen35.cpp
-index 5b05fc6..a13eee7 100644
+index 5b05fc6..1e55e62 100644
 --- a/src/models/qwen35.cpp
 +++ b/src/models/qwen35.cpp
 @@ -12,6 +12,15 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
@@ -459,10 +459,10 @@ index 5b05fc6..a13eee7 100644
 +    const bool is_jev = has_decision_type && decision_type == "joyfox-jev";
 +    if (is_jev) {
 +        const int64_t head_dim = 128;
-+        jev_query = create_tensor(LLM_TENSOR_DECISION_QUERY, { n_embd, head_dim }, 0);
-+        jev_key = create_tensor(LLM_TENSOR_DECISION_KEY, { n_embd, head_dim }, 0);
-+        jev_query_bias = create_tensor(LLM_TENSOR_DECISION_JEV_QUERY_BIAS, { head_dim }, 0);
-+        jev_key_bias = create_tensor(LLM_TENSOR_DECISION_JEV_KEY_BIAS, { head_dim }, 0);
++        jev_query = create_tensor(tn(LLM_TENSOR_DECISION_QUERY, "weight"), { n_embd, head_dim }, 0);
++        jev_key = create_tensor(tn(LLM_TENSOR_DECISION_KEY, "weight"), { n_embd, head_dim }, 0);
++        jev_query_bias = create_tensor(tn(LLM_TENSOR_DECISION_JEV_QUERY_BIAS), { head_dim }, 0);
++        jev_key_bias = create_tensor(tn(LLM_TENSOR_DECISION_JEV_KEY_BIAS), { head_dim }, 0);
 +    }
 +
      // if output is NULL, init from the input tok embed
