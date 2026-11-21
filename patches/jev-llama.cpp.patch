@@ -1,0 +1,674 @@
+diff --git a/common/common.cpp b/common/common.cpp
+index b009d46..71a5f89 100644
+--- a/common/common.cpp
++++ b/common/common.cpp
+@@ -1157,6 +1157,7 @@ static const std::map<common_decision_type, std::string> COMMON_DECISION_TYPE_NA
+     { COMMON_DECISION_TYPE_OPENJEV,        "openjev"       },
+     { COMMON_DECISION_TYPE_LEV,            "lev"           },
+     { COMMON_DECISION_TYPE_KEV,            "kev"           },
++    { COMMON_DECISION_TYPE_JOYFOX_JEV,     "joyfox-jev"    },
+     { COMMON_DECISION_TYPE_NIMBLE,         "nimble"        },
+     { COMMON_DECISION_TYPE_LAYA,           "laya"          },
+     { COMMON_DECISION_TYPE_CLEF,           "clef"          },
+@@ -1298,7 +1299,7 @@ common_init_result::common_init_result(common_params & params, bool model_only)
+     const auto decision_type = common_get_decision_type(model);
+     // minicpm-ocr-jev reads its class scores from the pooled output, the pooling type is the one of the GGUF
+     if (decision_type == COMMON_DECISION_TYPE_LAYA || decision_type == COMMON_DECISION_TYPE_KEV || decision_type == COMMON_DECISION_TYPE_CLEF ||
+-        decision_type == COMMON_DECISION_TYPE_LFM2_D1_OMNI || decision_type == COMMON_DECISION_TYPE_VLLM_DECISION2 ||
++        decision_type == COMMON_DECISION_TYPE_JOYFOX_JEV || decision_type == COMMON_DECISION_TYPE_LFM2_D1_OMNI || decision_type == COMMON_DECISION_TYPE_VLLM_DECISION2 ||
+         decision_type == COMMON_DECISION_TYPE_MINICPM_OCR_JEV) {
+         const auto pooling_type = decision_type == COMMON_DECISION_TYPE_MINICPM_OCR_JEV ? LLAMA_POOLING_TYPE_UNSPECIFIED : LLAMA_POOLING_TYPE_NONE;
+ 
+diff --git a/common/common.h b/common/common.h
+index a8e89ed..858915b 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -987,6 +987,7 @@ enum common_decision_type {
+     COMMON_DECISION_TYPE_OPENJEV, // logits of one label token per option, read at the last prompt token
+     COMMON_DECISION_TYPE_LEV,     // same as openjev, noul is read from a rating scale
+     COMMON_DECISION_TYPE_KEV,     // dot product of the hidden states of the last token and of one end token per option
++    COMMON_DECISION_TYPE_JOYFOX_JEV, // projected query/key decision head
+     COMMON_DECISION_TYPE_NIMBLE,  // same as openjev, the prompt lists all the questions of the request
+     COMMON_DECISION_TYPE_LAYA,    // score of one marker token per option, read from the embeddings output
+     COMMON_DECISION_TYPE_CLEF,    // all questions in one prompt, score of option i read from the embeddings output at row i
+diff --git a/conversion/__init__.py b/conversion/__init__.py
+index 146c309..916238d 100644
+--- a/conversion/__init__.py
++++ b/conversion/__init__.py
+@@ -301,6 +301,7 @@ TEXT_MODEL_MAP: dict[str, str] = {
+     "Qwen3_5MoeForCausalLM": "qwen",
+     "Qwen3_5MoeForConditionalGeneration": "qwen",
+     "Qwen3_5TextModel": "qwen",
++    "JoyFoxJevModel": "qwen",
+     "Qwen4ExpForCausalLM": "qwen4exp",
+     "Qwen4ExpForConditionalGeneration": "qwen4exp",
+     "RND1": "qwen",
+diff --git a/conversion/base.py b/conversion/base.py
+index 540a66b..d600995 100644
+--- a/conversion/base.py
++++ b/conversion/base.py
+@@ -2089,7 +2089,7 @@ class TextModel(ModelBase):
+         toktypes: list[int] = []
+ 
+         from transformers import AutoTokenizer
+-        tokenizer = AutoTokenizer.from_pretrained(self.dir_model)
++        tokenizer = AutoTokenizer.from_pretrained(getattr(self, "tokenizer_dir", self.dir_model))
+         assert tokenizer is not None
+         vocab_size = self.hparams.get("vocab_size", len(tokenizer.vocab))
+         assert max(tokenizer.vocab.values()) < vocab_size
+diff --git a/conversion/qwen.py b/conversion/qwen.py
+index 3765354..fe0b8a9 100644
+--- a/conversion/qwen.py
++++ b/conversion/qwen.py
+@@ -801,6 +801,80 @@ class MiniCPMOCRSeqClsModel(Qwen3_5TextModel):
+         yield from super().modify_tensors(data_torch, name, bid)
+ 
+ 
++def _is_joyfox_jev_checkpoint(dir_model: Path) -> bool:
++    required = ("decision_config.json", "head.safetensors", "backbone/config.json", "tokenizer/tokenizer.json")
++    if not all((dir_model / name).is_file() for name in required):
++        return False
++    try:
++        with open(dir_model / "backbone" / "config.json", encoding="utf-8") as f:
++            config = json.load(f)
++        with open(dir_model / "decision_config.json", encoding="utf-8") as f:
++            decision = json.load(f)
++    except json.JSONDecodeError:
++        return False
++    return (
++        config.get("model_type") == "qwen3_5_text"
++        and config.get("hidden_size") == 1024
++        and decision.get("head_dim") == 128
++        and decision.get("format_version") == 2
++        and decision.get("adapter") is False
++        and decision.get("execution") == "rows"
++    )
++
++
++@ModelBase.register_hparams_loader(_is_joyfox_jev_checkpoint)
++def _load_joyfox_jev_hparams(dir_model: Path) -> dict[str, Any]:
++    logger.info("gguf: detected JoyFox JEV checkpoint")
++    hparams = ModelBase.load_hparams(dir_model / "backbone", False, guess=False)
++    hparams["architectures"] = ["JoyFoxJevModel"]
++    return hparams
++
++
++@ModelBase.register("JoyFoxJevModel")
++@ModelBase.example("joyfox/Qwen3.5-0.8B-JEV")
++class JoyFoxJevModel(Qwen3_5TextModel):
++    no_mtp = True
++
++    def __init__(self, dir_model, *args, **kwargs):
++        self.jev_root = dir_model
++        hparams = kwargs.pop("hparams", None)
++        if hparams is None:
++            hparams = ModelBase.load_hparams(dir_model / "backbone", self.is_mistral_format)
++        _LinearAttentionVReorderBase.__init__(self, dir_model / "backbone", *args, hparams=hparams, **kwargs)
++        self.dir_model_card = dir_model
++        self.tokenizer_dir = dir_model / "tokenizer"
++
++    def set_vocab(self):
++        self._set_vocab_gpt2()
++        template_path = self.tokenizer_dir / "chat_template.jinja"
++        if template_path.is_file():
++            self.gguf_writer.add_chat_template(template_path.read_text(encoding="utf-8"))
++
++    def set_gguf_parameters(self):
++        super().set_gguf_parameters()
++        self.gguf_writer.add_decision_type(gguf.DecisionType.JOYFOX_JEV)
++        self.gguf_writer.add_embedding_length_out(1024)
++
++    def generate_extra_tensors(self) -> Iterable[tuple[str, Tensor]]:
++        yield from super().generate_extra_tensors()
++        from safetensors.torch import load_file
++        head = load_file(self.jev_root / "head.safetensors")
++        expected = {"query.weight", "query.bias", "key.weight", "key.bias"}
++        if set(head) != expected:
++            raise ValueError("JoyFox JEV head must contain query/key weights and biases")
++        shapes = {"query.weight": (128, 1024), "key.weight": (128, 1024), "query.bias": (128,), "key.bias": (128,)}
++        for source, tensor in head.items():
++            if tuple(tensor.shape) != shapes[source]:
++                raise ValueError(f"invalid JoyFox JEV tensor shape for {source}: {tuple(tensor.shape)}")
++            target = {
++                "query.weight": "decision.query.weight",
++                "query.bias": "decision.jev_query_bias",
++                "key.weight": "decision.key.weight",
++                "key.bias": "decision.jev_key_bias",
++            }[source]
++            yield target, tensor
++
++
+ def _is_openjev_checkpoint(dir_model: Path) -> bool:
+     return (dir_model / "helper" / "shim.py").is_file() and (dir_model / "config.json").is_file()
+ 
+diff --git a/gguf-py/gguf/constants.py b/gguf-py/gguf/constants.py
+index 0592f5e..a164cba 100644
+--- a/gguf-py/gguf/constants.py
++++ b/gguf-py/gguf/constants.py
+@@ -1120,6 +1120,8 @@ class MODEL_TENSOR(IntEnum):
+     DECISION_QUERY                = auto()
+     DECISION_OPTION_MLP           = auto()
+     DECISION_QUERY_MLP            = auto()
++    DECISION_JEV_QUERY_BIAS       = auto()
++    DECISION_JEV_KEY_BIAS         = auto()
+     CONV1D               = auto()
+     CONVNEXT_DW          = auto()
+     CONVNEXT_NORM        = auto()
+@@ -2134,6 +2136,8 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
+     MODEL_TENSOR.DECISION_QUERY:                "decision.query",
+     MODEL_TENSOR.DECISION_OPTION_MLP:           "decision.option_mlp",
+     MODEL_TENSOR.DECISION_QUERY_MLP:            "decision.query_mlp",
++    MODEL_TENSOR.DECISION_JEV_QUERY_BIAS:        "decision.jev_query_bias",
++    MODEL_TENSOR.DECISION_JEV_KEY_BIAS:          "decision.jev_key_bias",
+     MODEL_TENSOR.CONV1D:                    "conv1d",
+     MODEL_TENSOR.CONVNEXT_DW:               "convnext.{bid}.dw",
+     MODEL_TENSOR.CONVNEXT_NORM:             "convnext.{bid}.norm",
+@@ -3683,6 +3687,10 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
+         MODEL_TENSOR.NEXTN_HNORM,
+         MODEL_TENSOR.NEXTN_SHARED_HEAD_HEAD,
+         MODEL_TENSOR.NEXTN_SHARED_HEAD_NORM,
++        MODEL_TENSOR.DECISION_QUERY,
++        MODEL_TENSOR.DECISION_KEY,
++        MODEL_TENSOR.DECISION_JEV_QUERY_BIAS,
++        MODEL_TENSOR.DECISION_JEV_KEY_BIAS,
+     ],
+     MODEL_ARCH.CLEF: [
+         MODEL_TENSOR.TOKEN_EMBD,
+@@ -7458,6 +7466,7 @@ class DecisionType:
+     OPENJEV = "openjev"  # logits of one label token per option
+     LEV     = "lev"      # same as openjev, noul is read from a rating scale
+     KEV     = "kev"      # dot product of the hidden states of the last token and of one end token per option
++    JOYFOX_JEV = "joyfox-jev"  # projected query/key decision head
+     NIMBLE  = "nimble"   # same as openjev, the prompt lists all the questions of the request
+     CLEF    = "clef"     # joint head over all questions, one score per option
+     PPLX_DECIDER = "pplx-decider"  # same as openjev, label codes of 1 or 2 letters
+diff --git a/gguf-py/gguf/tensor_mapping.py b/gguf-py/gguf/tensor_mapping.py
+index c0bbfde..898b4c8 100644
+--- a/gguf-py/gguf/tensor_mapping.py
++++ b/gguf-py/gguf/tensor_mapping.py
+@@ -1680,10 +1680,12 @@ class TensorNameMap:
+ 
+         MODEL_TENSOR.DECISION_KEY: (
+             "decision_head.key",  # vllm-decision2
++            "head.key.weight",  # JoyFox JEV
+         ),
+ 
+         MODEL_TENSOR.DECISION_QUERY: (
+             "decision_head.query",  # vllm-decision2
++            "head.query.weight",  # JoyFox JEV
+         ),
+ 
+         MODEL_TENSOR.DECISION_OPTION_MLP: (
+@@ -1694,6 +1696,14 @@ class TensorNameMap:
+             "decision_head.query_mlp",  # vllm-decision2
+         ),
+ 
++        MODEL_TENSOR.DECISION_JEV_QUERY_BIAS: (
++            "head.query.bias",  # JoyFox JEV
++        ),
++
++        MODEL_TENSOR.DECISION_JEV_KEY_BIAS: (
++            "head.key.bias",  # JoyFox JEV
++        ),
++
+         MODEL_TENSOR.ENC_ATTN_NORM: (
+             "encoder.block.{bid}.layer.0.layer_norm", # t5
+         ),
+diff --git a/src/llama-arch.cpp b/src/llama-arch.cpp
+index cdb1f37..1d242bb 100644
+--- a/src/llama-arch.cpp
++++ b/src/llama-arch.cpp
+@@ -441,6 +441,7 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
+     { LLM_KV_DECISION_ROUTING_BLOCK_COUNT, "%s.decision.routing_block_count" },
+     { LLM_KV_DECISION_HEAD_COUNT,          "%s.decision.head_count"          },
+     { LLM_KV_DECISION_LABELS,              "%s.decision.labels"              },
++    { LLM_KV_DECISION_TYPE,                "%s.decision.type"                },
+ 
+     { LLM_KV_TARGET_LAYERS,         "%s.target_layers"        },
+     { LLM_KV_TARGET_HIDDEN_SIZE,    "%s.target_hidden_size"   },
+@@ -677,6 +678,8 @@ static const std::map<llm_tensor, const char *> LLM_TENSOR_NAMES = {
+     { LLM_TENSOR_DECISION_QUERY,                         "decision.query" },
+     { LLM_TENSOR_DECISION_OPTION_MLP,                    "decision.option_mlp" },
+     { LLM_TENSOR_DECISION_QUERY_MLP,                     "decision.query_mlp" },
++    { LLM_TENSOR_DECISION_JEV_QUERY_BIAS,                "decision.jev_query_bias" },
++    { LLM_TENSOR_DECISION_JEV_KEY_BIAS,                  "decision.jev_key_bias" },
+     { LLM_TENSOR_ENC_OUTPUT_NORM,                        "enc.output_norm" },
+     { LLM_TENSOR_FFN_GATE_INP_SHEXP,                     "blk.%d.ffn_gate_inp_shexp" },
+     { LLM_TENSOR_SSM_A_NOSCAN,                           "blk.%d.ssm_a" },
+@@ -988,6 +991,8 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     {LLM_TENSOR_DECISION_QUERY,             {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_DECISION_OPTION_MLP,        {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_DECISION_QUERY_MLP,         {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_DECISION_JEV_QUERY_BIAS,    {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_ADD}},
++    {LLM_TENSOR_DECISION_JEV_KEY_BIAS,      {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_ADD}},
+     {LLM_TENSOR_DENSE_2_OUT,                {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}}, // Dense layer output
+     {LLM_TENSOR_DENSE_3_OUT,                {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}}, // Dense layer output
+     {LLM_TENSOR_OUTPUT_NORM,                {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},
+diff --git a/src/llama-arch.h b/src/llama-arch.h
+index 6517a3e..7fd7e40 100644
+--- a/src/llama-arch.h
++++ b/src/llama-arch.h
+@@ -490,6 +490,7 @@ enum llm_kv {
+     LLM_KV_DECISION_ROUTING_BLOCK_COUNT,
+     LLM_KV_DECISION_HEAD_COUNT,
+     LLM_KV_DECISION_LABELS,
++    LLM_KV_DECISION_TYPE,
+ 
+     LLM_KV_TARGET_LAYERS,
+     LLM_KV_TARGET_HIDDEN_SIZE,
+@@ -858,6 +859,8 @@ enum llm_tensor {
+     LLM_TENSOR_DECISION_QUERY,
+     LLM_TENSOR_DECISION_OPTION_MLP,
+     LLM_TENSOR_DECISION_QUERY_MLP,
++    LLM_TENSOR_DECISION_JEV_QUERY_BIAS,
++    LLM_TENSOR_DECISION_JEV_KEY_BIAS,
+     LLM_TENSOR_CONV1D,
+     LLM_TENSOR_CONVNEXT_DW,
+     LLM_TENSOR_CONVNEXT_NORM,
+diff --git a/src/llama-ext.h b/src/llama-ext.h
+index b8b7fba..68d3657 100644
+--- a/src/llama-ext.h
++++ b/src/llama-ext.h
+@@ -146,6 +146,9 @@ LLAMA_API bool llama_batch_ext_set_decision_group(struct llama_batch_ext * batch
+ // Label of option i of a decision model ("<arch>.decision.labels"), nullptr past the last one
+ LLAMA_API const char * llama_model_decision_label(const struct llama_model * model, uint32_t i);
+ 
++// Scores one JEV query hidden state against option hidden states.
++LLAMA_API bool llama_model_joyfox_jev_scores(const struct llama_model * model, const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores);
++
+ //
+ // model/context data extraction
+ //
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 06eb7c9..4e614d6 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -2252,6 +2252,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+     }
+ 
+     load_tensors_hadamard();
++    post_load_tensors();
+ 
+     return true;
+ }
+@@ -4277,7 +4278,7 @@ uint32_t llama_model_target_layer_ids_n(const struct llama_model * model) {
+ }
+ 
+ // read rows [row0, row0 + n_rows) of a 2D tensor as F32
+-static void llama_tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) {
++void llama_model::tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) const {
+     const size_t   nelements = (size_t) n_rows * tensor->ne[0];
+     const size_t   offset    = (size_t) row0 * tensor->nb[1];
+     const size_t   nbytes    = ggml_row_size(tensor->type, tensor->ne[0]) * n_rows;
+@@ -4315,11 +4316,43 @@ uint32_t llama_model_get_tok_embd(const struct llama_model * model, float * out)
+         return (uint32_t) nelements;
+     }
+ 
+-    llama_tensor_rows_to_f32(tensor, 0, tensor->ne[1], out);
++    tensor_rows_to_f32(tensor, 0, tensor->ne[1], out);
+ 
+     return (uint32_t) nelements;
+ }
+ 
++bool llama_model::joyfox_jev_scores(const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores) const {
++    if (query == nullptr || options == nullptr || scores == nullptr || n_options == 0 || n_options > 128 ||
++            n_embd != hparams.n_embd || jev_query_f32.size() != 128 * n_embd || jev_query_bias_f32.size() != 128 ||
++            jev_key_f32.size() != 128 * n_embd || jev_key_bias_f32.size() != 128) {
++        return false;
++    }
++    std::vector<float> query_projected(128);
++    for (size_t d = 0; d < 128; ++d) {
++        float value = jev_query_bias_f32[d];
++        for (size_t h = 0; h < n_embd; ++h) {
++            value += jev_query_f32[d * n_embd + h] * query[h];
++        }
++        query_projected[d] = value;
++    }
++    for (uint32_t option = 0; option < n_options; ++option) {
++        float score = 0.0f;
++        for (size_t d = 0; d < 128; ++d) {
++            float key = jev_key_bias_f32[d];
++            for (size_t h = 0; h < n_embd; ++h) {
++                key += jev_key_f32[d * n_embd + h] * options[(size_t) option * n_embd + h];
++            }
++            score += query_projected[d] * key;
++        }
++        scores[option] = score / sqrtf(128.0f);
++    }
++    return true;
++}
++
++bool llama_model_joyfox_jev_scores(const struct llama_model * model, const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores) {
++    return model != nullptr && model->joyfox_jev_scores(query, options, n_options, n_embd, scores);
++}
++
+ uint32_t llama_model_n_tokens_delay(const struct llama_model * model) {
+     return model->hparams.n_tokens_delay;
+ }
+@@ -4338,7 +4371,7 @@ uint32_t llama_model_get_tok_embd_rows(const struct llama_model * model, const l
+         if (tokens[i] < 0 || tokens[i] >= tensor->ne[1]) {
+             return 0;
+         }
+-        llama_tensor_rows_to_f32(tensor, tokens[i], 1, out + (size_t) i * tensor->ne[0]);
++        tensor_rows_to_f32(tensor, tokens[i], 1, out + (size_t) i * tensor->ne[0]);
+     }
+ 
+     return n_tokens * (uint32_t) tensor->ne[0];
+diff --git a/src/llama-model.h b/src/llama-model.h
+index eae5c68..4b76fc5 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -905,6 +905,15 @@ struct llama_model {
+     struct ggml_tensor * cls_norm  = nullptr;
+     struct ggml_tensor * cls_norm_b = nullptr;
+ 
++    struct ggml_tensor * jev_query = nullptr;
++    struct ggml_tensor * jev_query_bias = nullptr;
++    struct ggml_tensor * jev_key = nullptr;
++    struct ggml_tensor * jev_key_bias = nullptr;
++    std::vector<float> jev_query_f32;
++    std::vector<float> jev_query_bias_f32;
++    std::vector<float> jev_key_f32;
++    std::vector<float> jev_key_bias_f32;
++
+     struct ggml_tensor * conv1d   = nullptr;
+     struct ggml_tensor * conv1d_b = nullptr;
+ 
+@@ -1048,6 +1057,8 @@ struct llama_model {
+     bool has_tensor_overrides() const;
+ 
+     const struct ggml_tensor * get_tensor(const char * name) const;
++    bool joyfox_jev_scores(const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores) const;
++    void tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) const;
+ 
+     // the RoPE of a layer, used by both the model graph and the K-shift
+     virtual llama_rope_params get_rope_params(const llama_cparams & cparams, int il) const;
+@@ -1082,6 +1093,7 @@ struct llama_model {
+ 
+     // optional, runs after the scale pass
+     virtual void post_arch_tensors(llama_model_loader &) {}
++    virtual void post_load_tensors() {}
+ 
+ protected:
+     llama_model_params params;
+diff --git a/src/models/models.h b/src/models/models.h
+index 0f49b8a..06b6c7e 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -2807,6 +2807,7 @@ struct llama_model_qwen35 : public llama_model_base {
+     void load_arch_hparams(llama_model_loader & ml) override;
+     void load_arch_tensors(llama_model_loader & ml) override;
+     uint32_t graph_nodes_per_tensor() const override { return 32; }
++    void post_load_tensors() override;
+ 
+     struct graph : public llm_build_delta_net_base {
+         graph(const llm_graph_params & params);
+diff --git a/src/models/qwen35.cpp b/src/models/qwen35.cpp
+index 5b05fc6..a13eee7 100644
+--- a/src/models/qwen35.cpp
++++ b/src/models/qwen35.cpp
+@@ -12,6 +12,15 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
+     ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
+     ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
+ 
++    std::string decision_type;
++    if (ml.get_key(LLM_KV_DECISION_TYPE, decision_type, false) && decision_type == "joyfox-jev") {
++        if (hparams.n_embd != 1024) {
++            throw std::runtime_error("JoyFox JEV requires a 1024-dimensional Qwen3.5 backbone");
++        }
++        hparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
++        hparams.n_embd_out_impl = hparams.n_embd;
++    }
++
+     // Mark recurrent layers (linear attention layers). MTP layers are dense
+     // attention-only and must be flagged non-recurrent.
+     if (!ml.get_key_or_arr(LLM_KV_ATTENTION_RECURRENT_LAYERS, hparams.is_recr_impl, hparams.n_layer_all, false)) {
+@@ -30,6 +39,26 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
+     }
+ }
+ 
++void llama_model_qwen35::post_load_tensors() {
++    if (jev_query == nullptr && jev_query_bias == nullptr && jev_key == nullptr && jev_key_bias == nullptr) {
++        return;
++    }
++    if (jev_query == nullptr || jev_query_bias == nullptr || jev_key == nullptr || jev_key_bias == nullptr ||
++            jev_query->ne[0] != hparams.n_embd || jev_query->ne[1] != 128 ||
++            jev_key->ne[0] != hparams.n_embd || jev_key->ne[1] != 128 ||
++            jev_query_bias->ne[0] != 128 || jev_key_bias->ne[0] != 128) {
++        throw std::runtime_error("invalid JoyFox JEV decision head tensors");
++    }
++    jev_query_f32.resize(128 * hparams.n_embd);
++    jev_key_f32.resize(128 * hparams.n_embd);
++    jev_query_bias_f32.resize(128);
++    jev_key_bias_f32.resize(128);
++    tensor_rows_to_f32(jev_query, 0, 128, jev_query_f32.data());
++    tensor_rows_to_f32(jev_key, 0, 128, jev_key_f32.data());
++    tensor_rows_to_f32(jev_query_bias, 0, 1, jev_query_bias_f32.data());
++    tensor_rows_to_f32(jev_key_bias, 0, 1, jev_key_bias_f32.data());
++}
++
+ void llama_model_qwen35::load_arch_tensors(llama_model_loader & ml) {
+     LLAMA_LOAD_LOCALS;
+ 
+@@ -47,6 +76,17 @@ void llama_model_qwen35::load_arch_tensors(llama_model_loader & ml) {
+     cls_out   = create_tensor(tn(LLM_TENSOR_CLS_OUT, "weight"), { n_embd, hparams.n_embd_out() }, TENSOR_NOT_REQUIRED);
+     cls_out_b = create_tensor(tn(LLM_TENSOR_CLS_OUT, "bias"),   { hparams.n_embd_out() },         TENSOR_NOT_REQUIRED);
+ 
++    std::string decision_type;
++    const bool has_decision_type = ml.get_key(LLM_KV_DECISION_TYPE, decision_type, false);
++    const bool is_jev = has_decision_type && decision_type == "joyfox-jev";
++    if (is_jev) {
++        const int64_t head_dim = 128;
++        jev_query = create_tensor(LLM_TENSOR_DECISION_QUERY, { n_embd, head_dim }, 0);
++        jev_key = create_tensor(LLM_TENSOR_DECISION_KEY, { n_embd, head_dim }, 0);
++        jev_query_bias = create_tensor(LLM_TENSOR_DECISION_JEV_QUERY_BIAS, { head_dim }, 0);
++        jev_key_bias = create_tensor(LLM_TENSOR_DECISION_JEV_KEY_BIAS, { head_dim }, 0);
++    }
++
+     // if output is NULL, init from the input tok embed
+     if (output == NULL) {
+         output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), { n_embd, n_vocab }, TENSOR_DUPLICATED);
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+index eb5781e..a6805c3 100644
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -228,6 +228,7 @@ std::vector<std::string> server_model_output_modalities(common_decision_type dec
+         case COMMON_DECISION_TYPE_OPENJEV:
+         case COMMON_DECISION_TYPE_LEV:
+         case COMMON_DECISION_TYPE_KEV:
++        case COMMON_DECISION_TYPE_JOYFOX_JEV:
+         case COMMON_DECISION_TYPE_NIMBLE:
+         case COMMON_DECISION_TYPE_LAYA:
+         case COMMON_DECISION_TYPE_CLEF:
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index e37661a..0f33be9 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -2514,7 +2514,6 @@ private:
+                 const int32_t i = pos - pos_first;
+                 return i >= 0 && i < (int32_t) idx.size() ? llama_get_embeddings_ith(slot.ctx_tgt, idx[i]) : nullptr;
+             };
+-
+             // joint head (decision model): the scores are the first rows
+             for (int32_t i = 0; i < decision.n_scores; i++) {
+                 const float * embd = i < (int32_t) idx.size() ? llama_get_embeddings_ith(slot.ctx_tgt, idx[i]) : nullptr;
+@@ -2530,7 +2529,29 @@ private:
+             const float * embd_q = decision.pointer >= 0 ? get_embd(decision.pointer) : nullptr;
+             GGML_ASSERT(decision.column >= 0 && decision.column < n_embd_out);
+ 
+-            for (const int32_t marker : decision.markers) {
++            if (common_get_decision_type(model_tgt) == COMMON_DECISION_TYPE_JOYFOX_JEV) {
++                const int32_t n_hidden = llama_model_n_embd(model_tgt);
++                const float * hidden_q = get_embd(decision.pointer);
++                if (n_hidden != 1024 || hidden_q == nullptr || decision.markers.empty() || decision.markers.size() > 128) {
++                    send_error(slot, "invalid JoyFox JEV decision layout", ERROR_TYPE_SERVER);
++                    return;
++                }
++                std::vector<float> option_hidden(decision.markers.size() * n_hidden);
++                for (size_t i = 0; i < decision.markers.size(); ++i) {
++                    const float * hidden = get_embd(decision.markers[i]);
++                    if (hidden == nullptr) {
++                        send_error(slot, "failed to get JoyFox JEV option hidden state", ERROR_TYPE_SERVER);
++                        return;
++                    }
++                    std::copy(hidden, hidden + n_hidden, option_hidden.begin() + i * n_hidden);
++                }
++                std::vector<float> scores(decision.markers.size());
++                if (!llama_model_joyfox_jev_scores(model_tgt, hidden_q, option_hidden.data(), (uint32_t) scores.size(), (uint32_t) n_hidden, scores.data())) {
++                    send_error(slot, "failed to score JoyFox JEV options", ERROR_TYPE_SERVER);
++                    return;
++                }
++                res->scores = std::move(scores);
++            } else for (const int32_t marker : decision.markers) {
+                 const float * embd = get_embd(marker);
+                 if (embd == nullptr || (decision.pointer >= 0 && embd_q == nullptr)) {
+                     send_error(slot, "failed to get embeddings, the question and its options must fit in one batch", ERROR_TYPE_SERVER);
+diff --git a/tools/server/server-decision.cpp b/tools/server/server-decision.cpp
+index 32eeec3..0bfe142 100644
+--- a/tools/server/server-decision.cpp
++++ b/tools/server/server-decision.cpp
+@@ -50,10 +50,12 @@ void server_decision_context::init(const llama_model * model) {
+     vocab = llama_model_get_vocab(model);
+ 
+     const char * tmpl_src = llama_model_chat_template(model, "systemone");
+-    if (tmpl_src == nullptr) {
++    if (tmpl_src == nullptr && model_type != COMMON_DECISION_TYPE_JOYFOX_JEV) {
+         throw std::runtime_error("decision model has no \"systemone\" template");
+     }
+-    tmpl = std::make_shared<const common_chat_template>(tmpl_src, "", "");
++    if (tmpl_src != nullptr) {
++        tmpl = std::make_shared<const common_chat_template>(tmpl_src, "", "");
++    }
+ 
+     const std::string prefix_temp = prefix + "temperature.";
+     for (int32_t i = 0; i < llama_model_meta_count(model); i++) {
+@@ -193,6 +195,9 @@ void server_decision_context::init(const llama_model * model) {
+         init_quoted_spellings(LLAMA_TOKEN_ATTR_CONTROL | LLAMA_TOKEN_ATTR_USER_DEFINED, 1);
+         n_options_max   = labels.size();
+         noul_true_first = true;
++    } else if (model_type == COMMON_DECISION_TYPE_JOYFOX_JEV) {
++        n_options_max = 128;
++        strict_payload = true;
+     } else if (model_type == COMMON_DECISION_TYPE_MINICPM_OCR_JEV) {
+         // the classes come from the GGUF classifier labels, the request API is binary: [inconsistent, consistent]
+         const uint32_t n_classes = llama_model_n_cls_out(model);
+@@ -314,8 +319,9 @@ std::vector<server_decision_question> server_decision_context::parse_questions(c
+             if (is_h2o && (!criteria.is_array() || criteria.empty())) {
+                 throw err("\"criteria\" must be a non-empty array");
+             }
+-            if (!is_h2o && (!criteria.is_array() || criteria.size() < 2 || criteria.size() > 10)) {
+-                throw err("\"criteria\" must be an array of 2 to 10 levels");
++            const size_t max_score_levels = type == COMMON_DECISION_TYPE_JOYFOX_JEV ? n_options_max : 10;
++            if (!is_h2o && (!criteria.is_array() || criteria.size() < 2 || criteria.size() > max_score_levels)) {
++                throw err(string_format("\"criteria\" must be an array of 2 to %zu levels", max_score_levels));
+             }
+             for (size_t i = 0; i < criteria.size(); i++) {
+                 if (strict_payload && !decision_is_payload(criteria.at(i))) {
+@@ -1098,6 +1104,20 @@ json server_decision_context::render_options(const server_decision_question & qu
+     return options;
+ }
+ 
++static std::string joyfox_jev_payload_text(const json & value) {
++    if (value.is_string()) {
++        return value.get<std::string>();
++    }
++    return decision_py_dumps(decision_sort_keys(value), -1, ", ", ": ", false);
++}
++
++static std::string joyfox_jev_option_text(const server_decision_option & option) {
++    if (option.description.is_null()) {
++        return option.key;
++    }
++    return option.key + ": " + joyfox_jev_payload_text(option.description);
++}
++
+ std::string server_decision_context::render(
+         const json & state,
+         const std::vector<server_decision_question> & questions,
+@@ -1206,6 +1226,44 @@ void server_decision_context::fill_task(
+         return;
+     }
+ 
++    if (type == COMMON_DECISION_TYPE_JOYFOX_JEV) {
++        if (!files.empty()) {
++            throw std::invalid_argument("JoyFox JEV accepts text-only state");
++        }
++        std::string prompt = "State:\n" + joyfox_jev_payload_text(state) + "\n";
++        const std::string question_type = decision_question_type_name(question.type);
++        prompt += "Question (" + question_type + "):\n" + joyfox_jev_payload_text(question.instructions) + "\n";
++        llama_tokens tokens = common_tokenize(vocab, prompt, false, false);
++        task.decision.no_batching = true;
++        for (const auto & option : question.options) {
++            std::string text;
++            if (question.type == SERVER_DECISION_QUESTION_SCORE) {
++                text = joyfox_jev_payload_text(option.description);
++            } else if (question.type == SERVER_DECISION_QUESTION_NOUL) {
++                text = option.key + ": " + (option.description.is_null() ? option.key : joyfox_jev_payload_text(option.description));
++            } else {
++                text = joyfox_jev_option_text(option);
++            }
++            const llama_tokens span = common_tokenize(vocab, "Option:\n" + text + "\n", false, false);
++            if (span.empty()) {
++                throw std::invalid_argument("JoyFox JEV option tokenized to an empty span");
++            }
++            tokens.insert(tokens.end(), span.begin(), span.end());
++            task.decision.markers.push_back((int32_t) tokens.size() - 1);
++        }
++        const llama_tokens suffix = common_tokenize(vocab, "Decision:\n", false, false);
++        if (suffix.empty()) {
++            throw std::runtime_error("JoyFox JEV decision suffix tokenized to an empty span");
++        }
++        tokens.insert(tokens.end(), suffix.begin(), suffix.end());
++        task.decision.pointer = (int32_t) tokens.size() - 1;
++        if (tokens.size() > 1024) {
++            throw std::invalid_argument("JoyFox JEV input exceeds 1024 tokens");
++        }
++        task.tokens = server_tokens(tokens, false);
++        return;
++    }
++
+     const std::string prompt = render(state, questions, question, variant, files.size());
+ 
+     if (type == COMMON_DECISION_TYPE_MINICPM_OCR_JEV) {
+diff --git a/tools/server/tests/unit/test_systemone.py b/tools/server/tests/unit/test_systemone.py
+index b0b5715..1367282 100644
+--- a/tools/server/tests/unit/test_systemone.py
++++ b/tools/server/tests/unit/test_systemone.py
+@@ -1,3 +1,4 @@
++import os
+ import pytest
+ from utils import *
+ from test_vision_api import get_img_url
+@@ -31,6 +32,32 @@ TEST_QUESTIONS = {
+ }
+ 
+ 
++def test_systemone_joyfox_jev():
++    model_path = os.environ.get("JOYFOX_JEV_GGUF")
++    if not model_path:
++        pytest.skip("JOYFOX_JEV_GGUF is not set")
++    global server
++    server = ServerProcess()
++    server.model_hf_repo = None
++    server.model_hf_file = None
++    server.model_file = model_path
++    server.model_alias = "joyfox-jev"
++    server.n_ctx = 2048
++    server.n_batch = 2048
++    server.n_ubatch = 2048
++    server.n_slots = 1
++    server.n_threads = 2
++    server.start()
++    res = server.make_request("POST", "/v1/systemone", data={"state": TEST_STATE, "questions": TEST_QUESTIONS})
++    assert res.status_code == 200
++    answers = res.body["answers"]
++    for question_id in ("route", "urgency"):
++        probabilities = answers[question_id]["probabilities"]
++        assert abs(sum(probabilities.values()) - 1.0) < 1e-4
++    assert answers["route"]["choice"] in TEST_QUESTIONS["route"]["criteria"]
++    assert 0.0 <= answers["angry"]["noul"] <= 1.0
++
++
+ def get_prompt_metrics(server: ServerProcess) -> tuple[int, int]:
+     """returns the number of prompt tokens (processed, cached) since the server started"""
+     res = server.make_request("GET", "/metrics")

@@ -1,0 +1,81 @@
+name: Build llama.cpp with JoyFox JEV
+
+on:
+  workflow_dispatch:
+    inputs:
+      llama_cpp_ref:
+        description: llama.cpp git ref to patch
+        required: true
+        default: e6d624b9a4b95c6b52f5ca384d70b75581f9821a
+        type: string
+      model_revision:
+        description: JoyFox model revision
+        required: true
+        default: ae7b7040aeff7802f6f2bcfdd27f08a72d5cd969
+        type: string
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  MODEL_ID: joyfox/Qwen3.5-0.8B-JEV
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout adapter
+        uses: actions/checkout@v4
+
+      - name: Checkout llama.cpp source
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: ${{ inputs.llama_cpp_ref || 'e6d624b9a4b95c6b52f5ca384d70b75581f9821a' }}
+          path: llama.cpp
+
+      - name: Apply JEV source patch
+        run: git -C llama.cpp apply "$GITHUB_WORKSPACE/patches/jev-llama.cpp.patch"
+
+      - name: Install converter dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r llama.cpp/requirements.txt pytest torch safetensors transformers==5.5.3 sentencepiece
+
+      - name: Build llama-server
+        run: cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+
+      - name: Compile llama-server
+        run: cmake --build llama.cpp/build --target llama-server --parallel 2
+
+      - name: Download JoyFox checkpoint
+        env:
+          HF_ENDPOINT: https://huggingface.co
+          MODEL_REVISION: ${{ inputs.model_revision || 'main' }}
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id="joyfox/Qwen3.5-0.8B-JEV",
+              revision=os.environ["MODEL_REVISION"],
+              local_dir="model",
+              allow_patterns=["decision_config.json", "head.safetensors", "backbone/*", "tokenizer/*"],
+          )
+          PY
+
+      - name: Convert checkpoint to JEV GGUF
+        run: |
+          python llama.cpp/convert_hf_to_gguf.py model --outfile model-jev-f16.gguf --outtype f16
+
+      - name: Run JEV endpoint smoke tests
+        run: |
+          set -euo pipefail
+          llama.cpp/build/bin/llama-server --model model-jev-f16.gguf --host 127.0.0.1 --port 8080 --ctx-size 1024 --parallel 1 >server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:8080/health >/dev/null; then break; fi
+            sleep 2
+          done
+          python tests/jev_smoke.py --base-url http://127.0.0.1:8080
