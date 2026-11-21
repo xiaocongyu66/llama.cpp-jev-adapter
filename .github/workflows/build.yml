@@ -48,6 +48,14 @@ jobs:
       - name: Compile llama-server
         run: cmake --build llama.cpp/build --target llama-server --parallel 2
 
+      - name: Upload x86_64 server
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-linux-x86_64
+          path: llama.cpp/build/bin/llama-server
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Download JoyFox checkpoint
         env:
           HF_ENDPOINT: https://huggingface.co
@@ -79,3 +87,33 @@ jobs:
             sleep 2
           done
           python tests/jev_smoke.py --base-url http://127.0.0.1:8080
+
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout adapter
+        uses: actions/checkout@v4
+
+      - name: Checkout llama.cpp source
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: ${{ inputs.llama_cpp_ref || 'e6d624b9a4b95c6b52f5ca384d70b75581f9821a' }}
+          path: llama.cpp
+
+      - name: Apply JEV source patch
+        run: git -C llama.cpp apply "$GITHUB_WORKSPACE/patches/jev-llama.cpp.patch"
+
+      - name: Build llama-server
+        run: cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+
+      - name: Compile llama-server
+        run: cmake --build llama.cpp/build --target llama-server --parallel 2
+
+      - name: Upload ARM64 server
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-linux-arm64
+          path: llama.cpp/build/bin/llama-server
+          if-no-files-found: error
+          retention-days: 7
