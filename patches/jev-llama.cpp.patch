@@ -460,10 +460,18 @@ index eb5781e..a6805c3 100644
          case COMMON_DECISION_TYPE_LAYA:
          case COMMON_DECISION_TYPE_CLEF:
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index e37661a..0f33be9 100644
+index e37661a..ef3154f 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -2514,7 +2514,6 @@ private:
+@@ -17,6 +17,7 @@
+ #include "common.h"
+ #include "fit.h"
+ #include "llama.h"
++#include "llama-ext.h"
+ #include "log.h"
+ #include "sampling.h"
+ #include "speculative.h"
+@@ -2514,7 +2515,6 @@ private:
                  const int32_t i = pos - pos_first;
                  return i >= 0 && i < (int32_t) idx.size() ? llama_get_embeddings_ith(slot.ctx_tgt, idx[i]) : nullptr;
              };
@@ -471,7 +479,7 @@ index e37661a..0f33be9 100644
              // joint head (decision model): the scores are the first rows
              for (int32_t i = 0; i < decision.n_scores; i++) {
                  const float * embd = i < (int32_t) idx.size() ? llama_get_embeddings_ith(slot.ctx_tgt, idx[i]) : nullptr;
-@@ -2530,7 +2529,29 @@ private:
+@@ -2530,7 +2530,29 @@ private:
              const float * embd_q = decision.pointer >= 0 ? get_embd(decision.pointer) : nullptr;
              GGML_ASSERT(decision.column >= 0 && decision.column < n_embd_out);
  
