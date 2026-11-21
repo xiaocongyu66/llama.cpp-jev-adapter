@@ -280,7 +280,7 @@ index b8b7fba..68d3657 100644
  // model/context data extraction
  //
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index 06eb7c9..4e614d6 100644
+index 06eb7c9..22722e6 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
 @@ -2252,6 +2252,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
@@ -291,25 +291,27 @@ index 06eb7c9..4e614d6 100644
  
      return true;
  }
-@@ -4277,7 +4278,7 @@ uint32_t llama_model_target_layer_ids_n(const struct llama_model * model) {
- }
- 
- // read rows [row0, row0 + n_rows) of a 2D tensor as F32
--static void llama_tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) {
-+void llama_model::tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) const {
-     const size_t   nelements = (size_t) n_rows * tensor->ne[0];
-     const size_t   offset    = (size_t) row0 * tensor->nb[1];
-     const size_t   nbytes    = ggml_row_size(tensor->type, tensor->ne[0]) * n_rows;
-@@ -4315,11 +4316,43 @@ uint32_t llama_model_get_tok_embd(const struct llama_model * model, float * out)
-         return (uint32_t) nelements;
-     }
- 
--    llama_tensor_rows_to_f32(tensor, 0, tensor->ne[1], out);
-+    tensor_rows_to_f32(tensor, 0, tensor->ne[1], out);
- 
+@@ -4320,6 +4321,55 @@ uint32_t llama_model_get_tok_embd(const struct llama_model * model, float * out)
      return (uint32_t) nelements;
  }
  
++void llama_model::cache_joyfox_jev_tensors() {
++    if (jev_query == nullptr || jev_query_bias == nullptr || jev_key == nullptr || jev_key_bias == nullptr ||
++            jev_query->ne[0] != hparams.n_embd || jev_query->ne[1] != 128 ||
++            jev_key->ne[0] != hparams.n_embd || jev_key->ne[1] != 128 ||
++            jev_query_bias->ne[0] != 128 || jev_key_bias->ne[0] != 128) {
++        throw std::runtime_error("invalid JoyFox JEV decision head tensors");
++    }
++    jev_query_f32.resize(128 * hparams.n_embd);
++    jev_key_f32.resize(128 * hparams.n_embd);
++    jev_query_bias_f32.resize(128);
++    jev_key_bias_f32.resize(128);
++    llama_tensor_rows_to_f32(jev_query, 0, 128, jev_query_f32.data());
++    llama_tensor_rows_to_f32(jev_key, 0, 128, jev_key_f32.data());
++    llama_tensor_rows_to_f32(jev_query_bias, 0, 1, jev_query_bias_f32.data());
++    llama_tensor_rows_to_f32(jev_key_bias, 0, 1, jev_key_bias_f32.data());
++}
++
 +bool llama_model::joyfox_jev_scores(const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores) const {
 +    if (query == nullptr || options == nullptr || scores == nullptr || n_options == 0 || n_options > 128 ||
 +            n_embd != hparams.n_embd || jev_query_f32.size() != 128 * n_embd || jev_query_bias_f32.size() != 128 ||
@@ -345,17 +347,8 @@ index 06eb7c9..4e614d6 100644
  uint32_t llama_model_n_tokens_delay(const struct llama_model * model) {
      return model->hparams.n_tokens_delay;
  }
-@@ -4338,7 +4371,7 @@ uint32_t llama_model_get_tok_embd_rows(const struct llama_model * model, const l
-         if (tokens[i] < 0 || tokens[i] >= tensor->ne[1]) {
-             return 0;
-         }
--        llama_tensor_rows_to_f32(tensor, tokens[i], 1, out + (size_t) i * tensor->ne[0]);
-+        tensor_rows_to_f32(tensor, tokens[i], 1, out + (size_t) i * tensor->ne[0]);
-     }
- 
-     return n_tokens * (uint32_t) tensor->ne[0];
 diff --git a/src/llama-model.h b/src/llama-model.h
-index eae5c68..4b76fc5 100644
+index eae5c68..25cea8c 100644
 --- a/src/llama-model.h
 +++ b/src/llama-model.h
 @@ -905,6 +905,15 @@ struct llama_model {
@@ -379,7 +372,7 @@ index eae5c68..4b76fc5 100644
  
      const struct ggml_tensor * get_tensor(const char * name) const;
 +    bool joyfox_jev_scores(const float * query, const float * options, uint32_t n_options, uint32_t n_embd, float * scores) const;
-+    void tensor_rows_to_f32(const ggml_tensor * tensor, int64_t row0, int64_t n_rows, float * out) const;
++    void cache_joyfox_jev_tensors();
  
      // the RoPE of a layer, used by both the model graph and the K-shift
      virtual llama_rope_params get_rope_params(const llama_cparams & cparams, int il) const;
@@ -404,7 +397,7 @@ index 0f49b8a..06b6c7e 100644
      struct graph : public llm_build_delta_net_base {
          graph(const llm_graph_params & params);
 diff --git a/src/models/qwen35.cpp b/src/models/qwen35.cpp
-index 5b05fc6..1e55e62 100644
+index 5b05fc6..fee735c 100644
 --- a/src/models/qwen35.cpp
 +++ b/src/models/qwen35.cpp
 @@ -12,6 +12,15 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
@@ -423,34 +416,20 @@ index 5b05fc6..1e55e62 100644
      // Mark recurrent layers (linear attention layers). MTP layers are dense
      // attention-only and must be flagged non-recurrent.
      if (!ml.get_key_or_arr(LLM_KV_ATTENTION_RECURRENT_LAYERS, hparams.is_recr_impl, hparams.n_layer_all, false)) {
-@@ -30,6 +39,26 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
+@@ -30,6 +39,12 @@ void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
      }
  }
  
 +void llama_model_qwen35::post_load_tensors() {
-+    if (jev_query == nullptr && jev_query_bias == nullptr && jev_key == nullptr && jev_key_bias == nullptr) {
-+        return;
++    if (jev_query != nullptr || jev_query_bias != nullptr || jev_key != nullptr || jev_key_bias != nullptr) {
++        cache_joyfox_jev_tensors();
 +    }
-+    if (jev_query == nullptr || jev_query_bias == nullptr || jev_key == nullptr || jev_key_bias == nullptr ||
-+            jev_query->ne[0] != hparams.n_embd || jev_query->ne[1] != 128 ||
-+            jev_key->ne[0] != hparams.n_embd || jev_key->ne[1] != 128 ||
-+            jev_query_bias->ne[0] != 128 || jev_key_bias->ne[0] != 128) {
-+        throw std::runtime_error("invalid JoyFox JEV decision head tensors");
-+    }
-+    jev_query_f32.resize(128 * hparams.n_embd);
-+    jev_key_f32.resize(128 * hparams.n_embd);
-+    jev_query_bias_f32.resize(128);
-+    jev_key_bias_f32.resize(128);
-+    tensor_rows_to_f32(jev_query, 0, 128, jev_query_f32.data());
-+    tensor_rows_to_f32(jev_key, 0, 128, jev_key_f32.data());
-+    tensor_rows_to_f32(jev_query_bias, 0, 1, jev_query_bias_f32.data());
-+    tensor_rows_to_f32(jev_key_bias, 0, 1, jev_key_bias_f32.data());
 +}
 +
  void llama_model_qwen35::load_arch_tensors(llama_model_loader & ml) {
      LLAMA_LOAD_LOCALS;
  
-@@ -47,6 +76,17 @@ void llama_model_qwen35::load_arch_tensors(llama_model_loader & ml) {
+@@ -47,6 +62,17 @@ void llama_model_qwen35::load_arch_tensors(llama_model_loader & ml) {
      cls_out   = create_tensor(tn(LLM_TENSOR_CLS_OUT, "weight"), { n_embd, hparams.n_embd_out() }, TENSOR_NOT_REQUIRED);
      cls_out_b = create_tensor(tn(LLM_TENSOR_CLS_OUT, "bias"),   { hparams.n_embd_out() },         TENSOR_NOT_REQUIRED);
  
