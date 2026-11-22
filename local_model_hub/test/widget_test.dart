@@ -24,7 +24,7 @@ void main() {
     await tester.tap(find.text('请求日志').last);
     await tester.pumpAndSettle();
     expect(find.byType(ActivityPage), findsOneWidget);
-    expect(find.text('暂无请求'), findsOneWidget);
+    expect(find.text('查看请求状态、token 用量和延迟'), findsOneWidget);
   });
 
   test('persists key configuration without losing usage totals', () {
