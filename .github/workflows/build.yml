@@ -231,11 +231,13 @@ jobs:
           properties.write_text(source)
           print(next(line for line in source.splitlines() if line.startswith('android.newDsl=')))
           PY
-          cat >> android/app/build.gradle.kts <<'EOF'
+          cat >> android/build.gradle.kts <<'EOF'
 
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              compilerOptions {
-                  jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+          subprojects {
+              tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                  compilerOptions {
+                      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+                  }
               }
           }
           EOF
