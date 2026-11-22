@@ -215,11 +215,31 @@ jobs:
           PY
       - name: Configure Android Gradle compatibility
         run: |
-          printf '\nandroid.newDsl=false\n' >> android/gradle.properties
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          properties = Path('android/gradle.properties')
+          source = properties.read_text()
+          source, count = re.subn(
+              r'(?m)^android\.newDsl=.*$',
+              'android.newDsl=false',
+              source,
+          )
+          if count == 0:
+              source += '\nandroid.newDsl=false\n'
+          properties.write_text(source)
+          print(next(line for line in source.splitlines() if line.startswith('android.newDsl=')))
+          PY
           cat >> android/app/build.gradle.kts <<'EOF'
 
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              kotlinOptions.jvmTarget = "11"
+          import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+          tasks.withType<KotlinCompile>().configureEach {
+              compilerOptions {
+                  jvmTarget.set(JvmTarget.JVM_11)
+              }
           }
           EOF
       - name: Resolve packages
