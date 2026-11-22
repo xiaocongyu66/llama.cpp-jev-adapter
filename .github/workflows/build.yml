@@ -97,8 +97,6 @@ jobs:
       - name: Checkout adapter
         uses: actions/checkout@v4
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
       - name: Install Android NDK
         uses: nttld/setup-ndk@v1
         with:
