@@ -73,6 +73,10 @@ class LocalModel {
 }
 
 class HubState extends material.ChangeNotifier {
+  HubState() {
+    gateway = ApiGateway(keys: keys, onLog: _onGatewayLog);
+  }
+
   final List<LocalModel> models = [];
   final List<GatewayKey> keys = [];
   final List<GatewayLog> logs = [];
@@ -84,6 +88,14 @@ class HubState extends material.ChangeNotifier {
   String? enginePath;
   String? backendArgs;
   String? lastError;
+
+  void _onGatewayLog(GatewayLog log) {
+    logs.insert(0, log);
+    if (logs.length > 500) logs.removeLast();
+    unawaited(_saveLogs());
+    unawaited(_saveKeys());
+    notifyListeners();
+  }
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -103,13 +115,6 @@ class HubState extends material.ChangeNotifier {
       key.requestTimes.removeWhere((time) => DateTime.now().difference(time) >= const Duration(minutes: 1));
     }
     selectedModel = models.isEmpty ? null : models.first;
-    gateway = ApiGateway(keys: keys, onLog: (log) {
-      logs.insert(0, log);
-      if (logs.length > 500) logs.removeLast();
-      unawaited(_saveLogs());
-      unawaited(_saveKeys());
-      notifyListeners();
-    });
     final savedLogs = prefs.getString('requestLogs');
     if (savedLogs != null) {
       for (final item in (jsonDecode(savedLogs) as List).cast<Map<String, Object?>>()) {
