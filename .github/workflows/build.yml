@@ -136,6 +136,10 @@ jobs:
             -DLLAMA_BUILD_EXAMPLES=OFF \
             -DLLAMA_BUILD_TOOLS=OFF \
             -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_UI=OFF \
+            -DLLAMA_CONNECT=OFF \
+            -DLLAMA_TOOLS_INSTALL=OFF \
             -DCMAKE_INSTALL_PREFIX="$PWD/android-arm64"
           cmake --build build-android-arm64 --target install --parallel 2
 
