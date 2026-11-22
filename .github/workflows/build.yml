@@ -353,16 +353,25 @@ jobs:
         run: |
           flutter build apk --release --target-platform android-arm64
           python - <<'PY'
+          import struct
           import zipfile
+
           apk = 'build/app/outputs/flutter-apk/app-release.apk'
           with zipfile.ZipFile(apk) as archive:
-              name = 'lib/arm64-v8a/libllama-server.so'
-              data = archive.read(name)
-              if data[:4] != b'\\x7fELF' or data[18:20] != b'\\xb7\\x00':
-                  raise SystemExit('APK server is not an ARM64 ELF executable')
-              if data[16:18] != b'\\x03\\x00':
-                  raise SystemExit('APK server is not a PIE executable')
-          print('APK contains ARM64 PIE llama-server')
+              matches = [name for name in archive.namelist() if name.endswith('/libllama-server.so')]
+              if len(matches) != 1:
+                  raise SystemExit(f'Expected one packaged llama-server, found {matches}')
+              data = archive.read(matches[0])
+              if data[:4] != bytes.fromhex('7f454c46'):
+                  raise SystemExit(f'{matches[0]} is not an ELF file: {data[:16].hex()}')
+              elf_class = data[4]
+              byte_order = '<' if data[5] == 1 else '>'
+              elf_type = struct.unpack_from(f'{byte_order}H', data, 16)[0]
+              machine = struct.unpack_from(f'{byte_order}H', data, 18)[0]
+              print(f'{matches[0]}: class={elf_class}, type={elf_type}, machine={machine}')
+              if (elf_class, elf_type, machine) != (2, 3, 183):
+                  raise SystemExit('APK server is not an AArch64 PIE executable')
+          print('APK contains AArch64 PIE llama-server')
           PY
       - name: Upload Android ARM64 APK
         uses: actions/upload-artifact@v4
