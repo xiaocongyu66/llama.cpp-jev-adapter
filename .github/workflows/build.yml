@@ -213,6 +213,14 @@ jobs:
           gradle.write_text(source)
           print('\n'.join(line for line in source.splitlines() if 'compileSdk' in line))
           PY
+      - name: Configure Kotlin JVM target
+        run: |
+          cat >> android/app/build.gradle.kts <<'EOF'
+
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions.jvmTarget = "11"
+          }
+          EOF
       - name: Resolve packages
         run: flutter pub get
       - name: Analyze and test
