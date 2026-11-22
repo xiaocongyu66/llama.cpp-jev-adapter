@@ -233,12 +233,9 @@ jobs:
           PY
           cat >> android/app/build.gradle.kts <<'EOF'
 
-          import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-          tasks.withType<KotlinCompile>().configureEach {
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
               compilerOptions {
-                  jvmTarget.set(JvmTarget.JVM_11)
+                  jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
               }
           }
           EOF
