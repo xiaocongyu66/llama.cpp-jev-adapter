@@ -138,7 +138,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: llama-server-android-arm64
-          path: artifact/llama-server
+          path: artifact/libllama-server.so
           if-no-files-found: error
           retention-days: 7
 

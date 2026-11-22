@@ -23,7 +23,8 @@ void main() {
 }
 
 class ModelHubApp extends material.StatelessWidget {
-  const ModelHubApp({super.key});
+  const ModelHubApp({super.key, this.home});
+  final material.Widget? home;
 
   @override
   material.Widget build(material.BuildContext context) => dynamic_color.DynamicColorBuilder(
@@ -57,7 +58,7 @@ class ModelHubApp extends material.StatelessWidget {
             dynamicColoring: lightDynamic != null || darkDynamic != null,
             theme: materialTheme,
             darkTheme: darkMaterialTheme,
-            home: const HubShell(),
+            home: home ?? const HubShell(),
           );
         },
       );
@@ -345,7 +346,8 @@ class HubScope extends widgets.InheritedNotifier<HubState> {
 }
 
 class HubShell extends material.StatefulWidget {
-  const HubShell({super.key});
+  const HubShell({super.key, this.state});
+  final HubState? state;
 
   @override
   material.State<HubShell> createState() => _HubShellState();
@@ -353,12 +355,13 @@ class HubShell extends material.StatefulWidget {
 
 class _HubShellState extends material.State<HubShell> {
   HubPage page = HubPage.overview;
-  final HubState state = HubState();
+  late final HubState state;
 
   @override
   void initState() {
     super.initState();
-    state.load();
+    state = widget.state ?? HubState();
+    if (widget.state == null) state.load();
   }
 
   @override
@@ -379,10 +382,12 @@ class _HubShellState extends material.State<HubShell> {
             if (wide) _Rail(selected: page, onSelected: _select),
             material.Expanded(
               child: material.SafeArea(
-                child: widgets.AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: _pageContent(),
-                ),
+                child: state.isLoaded
+                    ? widgets.AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: _pageContent(),
+                      )
+                    : const material.Center(child: material.CircularProgressIndicator()),
               ),
             ),
           ],
