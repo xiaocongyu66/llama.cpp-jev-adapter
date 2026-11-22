@@ -3,10 +3,25 @@ import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
 
 void main() {
-  testWidgets('renders overview shell', (tester) async {
+  testWidgets('renders overview and mobile page navigation', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(const ModelHubApp());
-    expect(find.text('概览'), findsOneWidget);
+    await tester.pumpAndSettle();
     expect(find.byType(OverviewPage), findsOneWidget);
+
+    await tester.tap(find.text('模型').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(ModelsPage), findsOneWidget);
+    expect(find.text('模型库为空'), findsOneWidget);
+
+    await tester.tap(find.text('请求日志').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(ActivityPage), findsOneWidget);
+    expect(find.text('暂无请求'), findsOneWidget);
   });
 
   test('persists key configuration without losing usage totals', () {

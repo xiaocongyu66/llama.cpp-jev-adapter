@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart' as widgets;
 
@@ -300,11 +298,18 @@ class _HubShellState extends material.State<HubShell> {
     return HubScope(
       state: state,
       child: material.Scaffold(
+        appBar: wide
+            ? null
+            : material.AppBar(
+                title: material.Text(_pages.firstWhere((item) => item.page == page).label),
+                centerTitle: false,
+              ),
         body: material.Row(
           children: [
             if (wide) _Rail(selected: page, onSelected: _select),
             material.Expanded(
               child: material.SafeArea(
+                top: wide,
                 child: widgets.AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
                   child: _pageContent(),
@@ -375,39 +380,17 @@ class _FloatingNavigation extends material.StatelessWidget {
 
   @override
   material.Widget build(material.BuildContext context) {
-    final scheme = material.Theme.of(context).colorScheme;
-    return material.SafeArea(
-      minimum: const material.EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: material.Center(
-        child: material.ConstrainedBox(
-          constraints: const widgets.BoxConstraints(maxWidth: 560),
-          child: material.ClipRRect(
-            borderRadius: material.BorderRadius.circular(32),
-            child: material.BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: widgets.DecoratedBox(
-                decoration: material.BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.76),
-                  border: material.Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
-                  borderRadius: material.BorderRadius.circular(32),
-                ),
-                child: m3e.M3ENavigationBar(
-                  selectedIndex: _pages.indexWhere((item) => item.page == selected),
-                  onDestinationSelected: (index) => onSelected(_pages[index].page),
-                  destinations: [
-                    for (final item in _pages)
-                      m3e.M3ENavigationBarDestination(
-                        icon: material.Icon(item.icon),
-                        selectedIcon: material.Icon(item.selectedIcon),
-                        label: item.label,
-                      ),
-                  ],
-                ),
-              ),
-            ),
+    return material.NavigationBar(
+      selectedIndex: _pages.indexWhere((item) => item.page == selected),
+      onDestinationSelected: (index) => onSelected(_pages[index].page),
+      destinations: [
+        for (final item in _pages)
+          material.NavigationDestination(
+            icon: material.Icon(item.icon),
+            selectedIcon: material.Icon(item.selectedIcon),
+            label: item.label,
           ),
-        ),
-      ),
+      ],
     );
   }
 }
