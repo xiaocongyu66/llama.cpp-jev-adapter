@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  dynamic_color: ^1.7.0
+  dynamic_color: ^2.1.0
   material_3_expressive: ^1.2.3
   crypto: ^3.0.6
   file_picker: ^8.1.7
