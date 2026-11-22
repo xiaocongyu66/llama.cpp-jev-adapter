@@ -48,11 +48,19 @@ jobs:
       - name: Compile llama-server
         run: cmake --build llama.cpp/build --target llama-server --parallel 2
 
-      - name: Upload x86_64 server
+      - name: Stage x86_64 server bundle
+        run: |
+          mkdir -p artifact/lib
+          cp llama.cpp/build/bin/llama-server artifact/
+          cp llama.cpp/build/bin/libllama-server-impl.so artifact/lib/
+          find llama.cpp/build -name '*.so' -type f -exec cp -n {} artifact/lib/ \;
+          LD_LIBRARY_PATH="$PWD/artifact/lib" artifact/llama-server --version
+
+      - name: Upload x86_64 server bundle
         uses: actions/upload-artifact@v4
         with:
           name: llama-server-linux-x86_64
-          path: llama.cpp/build/bin/llama-server
+          path: artifact/
           if-no-files-found: error
           retention-days: 7
 
@@ -110,10 +118,18 @@ jobs:
       - name: Compile llama-server
         run: cmake --build llama.cpp/build --target llama-server --parallel 2
 
-      - name: Upload ARM64 server
+      - name: Stage ARM64 server bundle
+        run: |
+          mkdir -p artifact/lib
+          cp llama.cpp/build/bin/llama-server artifact/
+          cp llama.cpp/build/bin/libllama-server-impl.so artifact/lib/
+          find llama.cpp/build -name '*.so' -type f -exec cp -n {} artifact/lib/ \;
+          LD_LIBRARY_PATH="$PWD/artifact/lib" artifact/llama-server --version
+
+      - name: Upload ARM64 server bundle
         uses: actions/upload-artifact@v4
         with:
           name: llama-server-linux-arm64
-          path: llama.cpp/build/bin/llama-server
+          path: artifact/
           if-no-files-found: error
           retention-days: 7
