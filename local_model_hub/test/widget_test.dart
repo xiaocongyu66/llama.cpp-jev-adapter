@@ -5,7 +5,7 @@ import 'package:local_model_hub/main.dart';
 void main() {
   testWidgets('renders overview shell', (tester) async {
     await tester.pumpWidget(const ModelHubApp());
-    expect(find.text('本地模型中心'), findsOneWidget);
+    expect(find.text('概览'), findsOneWidget);
     expect(find.text('尚未加载模型'), findsOneWidget);
   });
 
