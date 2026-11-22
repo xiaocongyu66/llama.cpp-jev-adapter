@@ -607,12 +607,13 @@ class _ApiEndpointCard extends material.StatelessWidget {
                       ? () async => state.stopApi()
                       : state.engineRunning && activeKeys.isNotEmpty
                       ? () async {
+                          final messenger = material.ScaffoldMessenger.of(context);
                           try {
                             await state.gateway.start();
                             state.apiRunning = true;
                             state.changed();
                           } catch (error) {
-                            _showMessage(context, error.toString());
+                            messenger.showSnackBar(material.SnackBar(content: material.Text(error.toString())));
                           }
                         }
                       : null,
@@ -990,7 +991,7 @@ class SettingsPage extends material.StatelessWidget {
           ),
         ])),
         const material.SizedBox(height: 16),
-        material.Card(child: material.Column(children: const [
+        const material.Card(child: material.Column(children: [
           material.ListTile(leading: material.Icon(material.Icons.info_outline), title: material.Text('关于'), subtitle: material.Text('Local Model Hub · 0.1.0')),
         ])),
       ],
