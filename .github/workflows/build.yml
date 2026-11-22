@@ -129,10 +129,10 @@ jobs:
             -DLLAMA_TOOLS_INSTALL=ON
           cmake --build build-android-arm64 --target llama-server --parallel 2
           mkdir -p artifact
-          cp build-android-arm64/bin/llama-server artifact/llama-server
-          chmod 755 artifact/llama-server
-          readelf -h artifact/llama-server | grep -E 'Class:|Machine:|Type:'
-          test -x artifact/llama-server
+          cp build-android-arm64/bin/llama-server artifact/libllama-server.so
+          chmod 755 artifact/libllama-server.so
+          readelf -h artifact/libllama-server.so | grep -E 'Class:|Machine:|Type:'
+          test -x artifact/libllama-server.so
 
       - name: Upload Android ARM64 llama-server
         uses: actions/upload-artifact@v4
@@ -204,14 +204,14 @@ jobs:
       - name: Download built-in llama-server
         uses: actions/download-artifact@v4
         with:
-          pattern: llama-server-android-arm64
-          merge-multiple: true
+          name: llama-server-android-arm64
           path: artifact/android-server
       - name: Stage executable Android library
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          test -f artifact/android-server/llama-server
-          cp artifact/android-server/llama-server android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+          server="$(find artifact/android-server -type f -name '*.so' -print -quit)"
+          test -n "$server"
+          cp "$server" android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
       - name: Configure Android engine service
