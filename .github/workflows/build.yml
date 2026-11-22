@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install converter dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r llama.cpp/requirements.txt torch safetensors sentencepiece
+        run: python -m pip install --upgrade pip && python -m pip install -r llama.cpp/requirements.txt 'transformers==5.5.3' torch safetensors sentencepiece
 
       - name: Build llama-server
         run: cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
