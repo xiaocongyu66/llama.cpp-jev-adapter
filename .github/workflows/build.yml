@@ -204,12 +204,12 @@ jobs:
               gradle = Path('android/app/build.gradle')
           source = gradle.read_text()
           source, count = re.subn(
-              r'(?m)^(\s*compileSdk(?:Version)?\s*(?:=\s*)?).*$',
-              r'\g<1>36',
+              r'flutter\.compileSdkVersion',
+              '36',
               source,
           )
           if count != 1:
-              raise SystemExit(f'Expected one compileSdk setting, found {count}')
+              raise SystemExit(f'Expected one Flutter compileSdk reference, found {count}')
           gradle.write_text(source)
           print('\n'.join(line for line in source.splitlines() if 'compileSdk' in line))
           PY
