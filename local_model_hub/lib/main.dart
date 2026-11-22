@@ -6,9 +6,10 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' as widgets;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:dynamic_color/dynamic_color.dart';
+import 'package:dynamic_color/dynamic_color.dart' as dynamic_color;
 import 'package:material_ui/material_ui.dart' as material;
 import 'package:material_3_expressive/material_3_expressive.dart' as m3e;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,18 +18,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_model_hub/api_gateway.dart';
 
 void main() {
-  runApp(const ModelHubApp());
+  widgets.runApp(const ModelHubApp());
 }
 
 class ModelHubApp extends material.StatelessWidget {
   const ModelHubApp({super.key});
 
   @override
-  material.Widget build(material.BuildContext context) => DynamicColorBuilder(
+  material.Widget build(material.BuildContext context) => dynamic_color.DynamicColorBuilder(
         builder: (lightDynamic, darkDynamic) {
           const fallbackSeed = material.Color(0xFF426B58);
-          final lightScheme = lightDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed);
-          final darkScheme = darkDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
+          final lightScheme = lightDynamic ?? dynamic_color.ColorScheme.fromSeed(seedColor: fallbackSeed);
+          final darkScheme = darkDynamic ?? dynamic_color.ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
           final themeData = m3e.M3EThemeData.light(seedColor: lightScheme.primary);
           final materialTheme = themeData.toThemeData().copyWith(
             colorScheme: lightScheme,
@@ -36,7 +37,7 @@ class ModelHubApp extends material.StatelessWidget {
             cardTheme: material.CardThemeData(
               elevation: 0,
               color: lightScheme.surfaceContainerLow,
-              shape: RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
+              shape: material.RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
             ),
           );
           final darkMaterialTheme = themeData.deriveDarkTemplate().toThemeData().copyWith(
@@ -44,7 +45,7 @@ class ModelHubApp extends material.StatelessWidget {
             cardTheme: material.CardThemeData(
               elevation: 0,
               color: darkScheme.surfaceContainerLow,
-              shape: RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
+              shape: material.RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
             ),
           );
           return m3e.M3EMaterialApp(
@@ -259,7 +260,7 @@ class HubState extends material.ChangeNotifier {
   void changed() => notifyListeners();
 }
 
-class HubScope extends InheritedNotifier<HubState> {
+class HubScope extends widgets.InheritedNotifier<HubState> {
   const HubScope({super.key, required HubState state, required super.child}) : super(notifier: state);
   static HubState of(material.BuildContext context) => context.dependOnInheritedWidgetOfExactType<HubScope>()!.notifier!;
 }
@@ -290,7 +291,7 @@ class _HubShellState extends material.State<HubShell> {
 
   @override
   material.Widget build(material.BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = widgets.MediaQuery.sizeOf(context).width >= 900;
     return HubScope(
       state: state,
       child: material.Scaffold(
@@ -299,7 +300,7 @@ class _HubShellState extends material.State<HubShell> {
             if (wide) _Rail(selected: page, onSelected: _select),
             material.Expanded(
               child: material.SafeArea(
-                child: AnimatedSwitcher(
+                child: widgets.AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
                   child: _pageContent(),
                 ),
@@ -329,8 +330,8 @@ class _PageSpec {
   const _PageSpec(this.page, this.label, this.icon, this.selectedIcon);
   final HubPage page;
   final String label;
-  final IconData icon;
-  final IconData selectedIcon;
+  final widgets.IconData icon;
+  final widgets.IconData selectedIcon;
 }
 
 const _pages = [
@@ -374,12 +375,12 @@ class _FloatingNavigation extends material.StatelessWidget {
       minimum: const material.EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: material.Center(
         child: material.ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
+          constraints: const widgets.BoxConstraints(maxWidth: 560),
           child: material.ClipRRect(
             borderRadius: material.BorderRadius.circular(32),
             child: material.BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: DecoratedBox(
+              child: widgets.DecoratedBox(
                 decoration: material.BoxDecoration(
                   color: scheme.surfaceContainerHighest.withValues(alpha: 0.76),
                   border: material.Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
@@ -416,7 +417,7 @@ class _PageFrame extends material.StatelessWidget {
   @override
   material.Widget build(material.BuildContext context) {
     return material.ListView(
-      key: ValueKey(title),
+      key: widgets.ValueKey(title),
       padding: const material.EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
         material.Row(
@@ -487,7 +488,7 @@ Future<void> _pickModel(material.BuildContext context) async {
 }
 
 void _showMessage(material.BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(material.SnackBar(content: material.Text(message)));
+  widgets.ScaffoldMessenger.of(context).showSnackBar(material.SnackBar(content: material.Text(message)));
 }
 
 class _StatusCard extends material.StatelessWidget {
@@ -521,7 +522,7 @@ class _StatGrid extends material.StatelessWidget {
   const _StatGrid();
   @override
   material.Widget build(material.BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
+    final width = widgets.MediaQuery.sizeOf(context).width;
     final state = HubScope.of(context);
     final count = width >= 1100 ? 4 : 2;
     final requests = state.keys.fold<int>(0, (sum, key) => sum + key.requests);
@@ -531,7 +532,7 @@ class _StatGrid extends material.StatelessWidget {
     return material.GridView.count(
       crossAxisCount: count,
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const widgets.NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
       childAspectRatio: width < 420 ? 1.35 : 1.8,
@@ -549,7 +550,7 @@ class _MetricCard extends material.StatelessWidget {
   const _MetricCard({required this.label, required this.value, required this.icon});
   final String label;
   final String value;
-  final IconData icon;
+  final widgets.IconData icon;
   @override
   material.Widget build(material.BuildContext context) => material.Card(
         child: material.Padding(
@@ -588,17 +589,17 @@ class _ApiEndpointCard extends material.StatelessWidget {
             material.Chip(avatar: material.Icon(material.Icons.circle, size: 9, color: state.apiRunning ? material.Theme.of(context).colorScheme.primary : material.Theme.of(context).colorScheme.outline), label: material.Text(state.apiRunning ? '运行中' : '已停止')),
           ]),
           const material.SizedBox(height: 14),
-          const SelectableText('http://127.0.0.1:8080/v1'),
+          const widgets.SelectableText('http://127.0.0.1:8080/v1'),
           const material.SizedBox(height: 12),
           material.Row(children: [
             const material.Icon(material.Icons.speed, size: 18),
             const material.SizedBox(width: 8),
             material.Text('速率上限：${rpm == 0 ? '未设置' : '$rpm RPM'}', style: material.Theme.of(context).textTheme.bodyMedium),
-            const Spacer(),
+            const widgets.Spacer(),
             material.TextButton(onPressed: () => state.changed(), child: const material.Text('管理')),
           ]),
           material.Align(
-            alignment: Alignment.centerRight,
+            alignment: widgets.Alignment.centerRight,
             child: material.FilledButton.tonalIcon(
               onPressed: !state.isLoaded
                   ? null
@@ -671,8 +672,8 @@ class _ModelTile extends material.StatelessWidget {
     return material.Card(
       child: material.ListTile(
         leading: material.Icon(model.loaded ? material.Icons.memory : material.Icons.sd_storage_outlined, color: material.Theme.of(context).colorScheme.primary),
-        title: material.Text(model.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: material.Text('${model.sizeLabel} · ${model.loaded ? '运行中' : model.path}', maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: material.Text(model.name, maxLines: 1, overflow: widgets.TextOverflow.ellipsis),
+        subtitle: material.Text('${model.sizeLabel} · ${model.loaded ? '运行中' : model.path}', maxLines: 1, overflow: widgets.TextOverflow.ellipsis),
         onTap: () => state.selectModel(model),
         trailing: material.Wrap(spacing: 4, children: [
           material.IconButton(
@@ -724,7 +725,7 @@ class _BackendCard extends material.StatelessWidget {
 
 Future<void> _configureEngine(material.BuildContext context, HubState state) async {
   final args = material.TextEditingController(text: state.backendArgs ?? '--n-gpu-layers auto');
-  final saved = await showDialog<String>(
+  final saved = await widgets.showDialog<String>(
     context: context,
     builder: (context) => material.AlertDialog(
       title: const material.Text('配置推理引擎'),
@@ -733,7 +734,7 @@ Future<void> _configureEngine(material.BuildContext context, HubState state) asy
         child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
           material.Text(state.enginePath ?? '尚未选择 llama-server'),
           const material.SizedBox(height: 12),
-          TextField(controller: args, decoration: const material.InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
+          widgets.TextField(controller: args, decoration: const material.InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
         ]),
       ),
       actions: [
@@ -826,16 +827,16 @@ class _KeyTile extends material.StatelessWidget {
 Future<void> _createKey(material.BuildContext context, HubState state) async {
   final name = material.TextEditingController();
   final rpm = material.TextEditingController(text: '60');
-  final result = await showDialog<(String, int)?>(
+  final result = await widgets.showDialog<(String, int)?>(
     context: context,
     builder: (context) => material.AlertDialog(
       title: const material.Text('新建 API 密钥'),
       content: material.SizedBox(
         width: 400,
         child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
-          TextField(controller: name, autofocus: true, decoration: const material.InputDecoration(labelText: '名称')),
+          widgets.TextField(controller: name, autofocus: true, decoration: const material.InputDecoration(labelText: '名称')),
           const material.SizedBox(height: 12),
-          TextField(controller: rpm, keyboardType: TextInputType.number, decoration: const material.InputDecoration(labelText: '每分钟请求上限')),
+          widgets.TextField(controller: rpm, keyboardType: widgets.TextInputType.number, decoration: const material.InputDecoration(labelText: '每分钟请求上限')),
         ]),
       ),
       actions: [
@@ -856,12 +857,12 @@ Future<void> _createKey(material.BuildContext context, HubState state) async {
   if (result == null || !context.mounted) return;
   final key = await state.addKey(result.$1, result.$2);
   if (!context.mounted) return;
-  await showDialog<void>(
+  await widgets.showDialog<void>(
     context: context,
     builder: (context) => material.AlertDialog(
       icon: const material.Icon(material.Icons.key),
       title: const material.Text('密钥已创建'),
-      content: SelectableText(key.secret),
+      content: widgets.SelectableText(key.secret),
       actions: [material.FilledButton(onPressed: () => material.Navigator.pop(context), child: const material.Text('完成'))],
     ),
   );
@@ -999,7 +1000,7 @@ class SettingsPage extends material.StatelessWidget {
 
 class _EmptyState extends material.StatelessWidget {
   const _EmptyState({required this.icon, required this.title, required this.body});
-  final IconData icon;
+  final widgets.IconData icon;
   final String title;
   final String body;
   @override
@@ -1012,8 +1013,8 @@ class _EmptyState extends material.StatelessWidget {
             material.Text(title, style: material.Theme.of(context).textTheme.titleMedium),
             const material.SizedBox(height: 6),
             material.ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: material.Text(body, textAlign: TextAlign.center, style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
+              constraints: const widgets.BoxConstraints(maxWidth: 420),
+              child: material.Text(body, textAlign: widgets.TextAlign.center, style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
           ]),
         ),
