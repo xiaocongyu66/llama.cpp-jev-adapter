@@ -215,9 +215,38 @@ jobs:
           PY
       - name: Configure Android Gradle DSL
         run: |
-          cat >> android/gradle.properties <<'EOF'
-          android.newDsl=true
-          EOF
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          catalog = Path('android/gradle/libs.versions.toml')
+          if catalog.exists():
+              source = catalog.read_text()
+              source, count = re.subn(
+                  r'(?m)^agp\s*=\s*"[^"]+"',
+                  'agp = "8.13.2"',
+                  source,
+              )
+              if count != 1:
+                  raise SystemExit(f'Expected one AGP version, found {count}')
+              catalog.write_text(source)
+          else:
+              build = Path('android/settings.gradle.kts')
+              source = build.read_text()
+              source, count = re.subn(
+                  r'(?m)(id\("com\.android\.application"\)\s+version\s+)"[^"]+"',
+                  r'\g<1>"8.13.2"',
+                  source,
+              )
+              if count != 1:
+                  raise SystemExit(f'Expected one AGP plugin version, found {count}')
+              build.write_text(source)
+          properties = Path('android/gradle.properties')
+          source = properties.read_text() if properties.exists() else ''
+          source = re.sub(r'(?m)^android\.newDsl=.*\n?', '', source)
+          properties.write_text(source)
+          print('Pinned Android Gradle Plugin to 8.13.2; legacy Android DSL enabled')
+          PY
           cat >> android/app/build.gradle.kts <<'EOF'
 
           import org.jetbrains.kotlin.gradle.dsl.JvmTarget
