@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
