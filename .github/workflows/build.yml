@@ -252,25 +252,28 @@ jobs:
 
           kotlin = next(android.glob('kotlin/**/MainActivity.kt'))
           source = kotlin.read_text()
-          package = re.search(r'(?m)^package (.+)$', source).group(1)
-          source = source.replace(
-              'import io.flutter.embedding.android.FlutterActivity',
-              'import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine\nimport io.flutter.plugin.common.EventChannel\nimport io.flutter.plugin.common.MethodChannel',
-          )
-          source = source.replace(
-              'class MainActivity : FlutterActivity() {',
-              '''class MainActivity : FlutterActivity() {
+          package_match = re.search(r'(?m)^package (.+)$', source)
+          if package_match is None:
+              raise SystemExit('Flutter MainActivity package declaration missing')
+          package = package_match.group(1)
+          kotlin.write_text(f'''{package_match.group(0)}
+
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.EventChannel
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {{
               private lateinit var engineBridge: EngineBridge
 
-              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {{
                   super.configureFlutterEngine(flutterEngine)
                   engineBridge = EngineBridge(this)
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "local_model_hub/engine").setMethodCallHandler(engineBridge)
                   EventChannel(flutterEngine.dartExecutor.binaryMessenger, "local_model_hub/engine_events").setStreamHandler(engineBridge)
-              }
-          ''',
-          )
-          kotlin.write_text(source)
+              }}
+          }}
+          ''')
           implementation = Path('android-src/EngineBridge.kt')
           code = implementation.read_text().replace('package com.example.local_model_hub', f'package {package}')
           (kotlin.parent / 'EngineBridge.kt').write_text(code)
