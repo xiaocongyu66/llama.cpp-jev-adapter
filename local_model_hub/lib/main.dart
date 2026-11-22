@@ -523,7 +523,7 @@ class _StatGrid extends material.StatelessWidget {
       physics: const widgets.NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      childAspectRatio: width < 420 ? 1.35 : 1.8,
+      childAspectRatio: width < 420 ? 1.1 : 1.8,
       children: [
         _MetricCard(label: '输入 tokens', value: '$input', icon: material.Icons.input),
         _MetricCard(label: '输出 tokens', value: '$output', icon: material.Icons.output),
