@@ -74,7 +74,7 @@ class LlamaEngineService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= 34) {
                     startForeground(NOTIFICATION_ID, notification("Starting llama.cpp"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
                 } else {
                     startForeground(NOTIFICATION_ID, notification("Starting llama.cpp"))
