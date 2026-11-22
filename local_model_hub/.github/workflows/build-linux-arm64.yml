@@ -1,0 +1,27 @@
+name: Build Linux ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.50.1'
+          cache: true
+      - run: flutter create --platforms=linux .
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build linux --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-model-hub-linux-arm64
+          path: build/linux/arm64/release/bundle/
+          if-no-files-found: error
