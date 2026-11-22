@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
-import 'package:material_3_expressive/components/navigation_bar/models/m3e_navigation_bar_destination.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,32 +28,32 @@ class ModelHubApp extends StatelessWidget {
           const fallbackSeed = Color(0xFF426B58);
           final lightScheme = lightDynamic ?? ColorScheme.fromSeed(seedColor: fallbackSeed);
           final darkScheme = darkDynamic ?? ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: Brightness.dark);
+          final themeData = M3EThemeData.light(seedColor: lightScheme.primary);
+          final materialTheme = themeData.toThemeData().copyWith(
+            colorScheme: lightScheme,
+            scaffoldBackgroundColor: const Color(0xFFF6F7F4),
+            cardTheme: CardThemeData(
+              elevation: 0,
+              color: lightScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+          );
+          final darkMaterialTheme = themeData.deriveDarkTemplate().toThemeData().copyWith(
+            colorScheme: darkScheme,
+            cardTheme: CardThemeData(
+              elevation: 0,
+              color: darkScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+          );
           return M3EMaterialApp(
             title: '本地模型中心',
             debugShowCheckedModeBanner: false,
-            themeMode: ThemeMode.system,
-            data: M3EThemeData.light(seedColor: lightScheme.primary),
+            data: themeData,
             autoTheming: true,
             dynamicColoring: lightDynamic != null || darkDynamic != null,
-            theme: ThemeData(
-              useMaterial3: true,
-              colorScheme: lightScheme,
-              scaffoldBackgroundColor: const Color(0xFFF6F7F4),
-              cardTheme: CardThemeData(
-                elevation: 0,
-                color: lightScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              ),
-            ),
-            darkTheme: ThemeData(
-              useMaterial3: true,
-              colorScheme: darkScheme,
-              cardTheme: CardThemeData(
-                elevation: 0,
-                color: darkScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              ),
-            ),
+            theme: materialTheme,
+            darkTheme: darkMaterialTheme,
             home: const HubShell(),
           );
         },
@@ -153,8 +154,8 @@ class HubState extends ChangeNotifier {
   }
 
   Future<void> startEngine(LocalModel model) async {
-    if (Platform.isAndroid || Platform.isIOS || Platform.isWeb) {
-      throw const UnsupportedError('当前版本的模型子进程仅支持桌面端；Android 原生引擎桥接尚未实现');
+    if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
+      throw UnsupportedError('当前版本的模型子进程仅支持桌面端；Android 原生引擎桥接尚未实现');
     }
     final executable = enginePath;
     if (executable == null || executable.isEmpty) throw const FormatException('先设置 llama-server 可执行文件路径');
