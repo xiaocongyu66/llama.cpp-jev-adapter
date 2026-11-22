@@ -189,7 +189,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: 3.38.9
           cache: true
       - name: Generate Android runner
         run: flutter create --platforms=android .
@@ -213,49 +213,12 @@ jobs:
           gradle.write_text(source)
           print('\n'.join(line for line in source.splitlines() if 'compileSdk' in line))
           PY
-      - name: Configure Android Gradle DSL
+      - name: Configure Kotlin JVM target
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          catalog = Path('android/gradle/libs.versions.toml')
-          if catalog.exists():
-              source = catalog.read_text()
-              source, count = re.subn(
-                  r'(?m)^agp\s*=\s*"[^"]+"',
-                  'agp = "8.13.2"',
-                  source,
-              )
-              if count != 1:
-                  raise SystemExit(f'Expected one AGP version, found {count}')
-              catalog.write_text(source)
-          else:
-              build = Path('android/settings.gradle.kts')
-              source = build.read_text()
-              source, count = re.subn(
-                  r'(?m)(id\("com\.android\.application"\)\s+version\s+)"[^"]+"',
-                  r'\g<1>"8.13.2"',
-                  source,
-              )
-              if count != 1:
-                  raise SystemExit(f'Expected one AGP plugin version, found {count}')
-              build.write_text(source)
-          properties = Path('android/gradle.properties')
-          source = properties.read_text() if properties.exists() else ''
-          source = re.sub(r'(?m)^android\.newDsl=.*\n?', '', source)
-          properties.write_text(source)
-          print('Pinned Android Gradle Plugin to 8.13.2; legacy Android DSL enabled')
-          PY
           cat >> android/app/build.gradle.kts <<'EOF'
 
-          import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-          tasks.withType<KotlinCompile>().configureEach {
-              compilerOptions {
-                  jvmTarget.set(JvmTarget.JVM_11)
-              }
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions.jvmTarget = "11"
           }
           EOF
       - name: Resolve packages
