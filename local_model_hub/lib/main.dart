@@ -74,9 +74,14 @@ class LocalModel {
 }
 
 class HubState extends material.ChangeNotifier {
-  HubState() {
+  HubState({Future<Directory> Function()? modelDirectoryProvider}) : _modelDirectoryProvider = modelDirectoryProvider ?? _defaultModelDirectory {
     gateway = ApiGateway(keys: keys, onLog: _onGatewayLog);
   }
+
+  final Future<Directory> Function() _modelDirectoryProvider;
+
+  static Future<Directory> _defaultModelDirectory() async =>
+      Directory(p.join((await getApplicationSupportDirectory()).path, 'models'));
 
   final List<LocalModel> models = [];
   final List<GatewayKey> keys = [];
@@ -141,7 +146,7 @@ class HubState extends material.ChangeNotifier {
     if (!await source.exists() || !sourcePath.toLowerCase().endsWith('.gguf')) {
       throw const FormatException('请选择存在的 GGUF 文件');
     }
-    final modelDirectory = Directory(p.join((await getApplicationSupportDirectory()).path, 'models'));
+    final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);
     final name = p.basename(sourcePath);
     var destination = p.join(modelDirectory.path, name);
