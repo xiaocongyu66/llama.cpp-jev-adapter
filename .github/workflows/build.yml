@@ -213,8 +213,9 @@ jobs:
           gradle.write_text(source)
           print('\n'.join(line for line in source.splitlines() if 'compileSdk' in line))
           PY
-      - name: Configure Kotlin JVM target
+      - name: Configure Android Gradle compatibility
         run: |
+          printf '\nandroid.newDsl=false\n' >> android/gradle.properties
           cat >> android/app/build.gradle.kts <<'EOF'
 
           tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
