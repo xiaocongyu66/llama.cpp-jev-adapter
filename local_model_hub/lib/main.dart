@@ -28,8 +28,8 @@ class ModelHubApp extends material.StatelessWidget {
   material.Widget build(material.BuildContext context) => dynamic_color.DynamicColorBuilder(
         builder: (lightDynamic, darkDynamic) {
           const fallbackSeed = material.Color(0xFF426B58);
-          final lightScheme = lightDynamic ?? material.ColorScheme.fromSeed(fallbackSeed);
-          final darkScheme = darkDynamic ?? material.ColorScheme.fromSeed(fallbackSeed, brightness: material.Brightness.dark);
+          final lightScheme = lightDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed);
+          final darkScheme = darkDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
           final themeData = m3e.M3EThemeData.light(seedColor: lightScheme.primary);
           final materialTheme = themeData.toThemeData().copyWith(
             colorScheme: lightScheme,
