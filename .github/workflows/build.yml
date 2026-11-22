@@ -234,9 +234,18 @@ jobs:
           cat >> android/build.gradle.kts <<'EOF'
 
           subprojects {
-              tasks.withType<JavaCompile>().configureEach {
-                  sourceCompatibility = JavaVersion.VERSION_17.toString()
-                  targetCompatibility = JavaVersion.VERSION_17.toString()
+              afterEvaluate {
+                  extensions.findByName("android")?.let { android ->
+                      val options = android.javaClass.getMethod("getCompileOptions").invoke(android)
+                      options.javaClass.getMethod("setSourceCompatibility", JavaVersion::class.java)
+                          .invoke(options, JavaVersion.VERSION_17)
+                      options.javaClass.getMethod("setTargetCompatibility", JavaVersion::class.java)
+                          .invoke(options, JavaVersion.VERSION_17)
+                  }
+                  tasks.withType<JavaCompile>().configureEach {
+                      sourceCompatibility = JavaVersion.VERSION_17.toString()
+                      targetCompatibility = JavaVersion.VERSION_17.toString()
+                  }
               }
               tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
                   compilerOptions {
