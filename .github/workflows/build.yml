@@ -204,13 +204,15 @@ jobs:
       - name: Download built-in llama-server
         uses: actions/download-artifact@v4
         with:
-          name: llama-server-android-arm64
+          pattern: llama-server-android-arm64
+          merge-multiple: true
           path: artifact/android-server
       - name: Stage executable Android library
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          test "$(find artifact/android-server -type f | wc -l)" -eq 1
-          cp "$(find artifact/android-server -type f -print -quit)" android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+          test -f artifact/android-server/llama-server
+          cp artifact/android-server/llama-server android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+          chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
       - name: Configure Android engine service
         run: |
