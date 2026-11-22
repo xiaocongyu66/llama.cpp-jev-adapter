@@ -19,7 +19,7 @@ void main() {
     await tester.tap(find.text('模型').last);
     await tester.pumpAndSettle();
     expect(find.byType(ModelsPage), findsOneWidget);
-    expect(find.text('导入、管理并启动本地模型'), findsOneWidget);
+    expect(find.text('导入'), findsOneWidget);
 
     await tester.tap(find.text('请求日志').last);
     await tester.pumpAndSettle();

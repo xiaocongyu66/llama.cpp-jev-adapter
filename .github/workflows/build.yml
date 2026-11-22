@@ -176,7 +176,6 @@ jobs:
           retention-days: 7
 
   build-flutter-android-arm64:
-    needs: build-android-arm64
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -201,19 +200,35 @@ jobs:
           cache: true
       - name: Generate Android runner
         run: flutter create --platforms=android .
-      - name: Download built-in llama-server
-        uses: actions/download-artifact@v4
-        with:
-          name: llama-server-android-arm64
-          path: artifact/android-server
-      - name: Stage executable Android library
+      - name: Build bundled Android ARM64 llama-server
         run: |
+          cmake -S ../llama.cpp -B ../build-android-arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_static \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_STATIC=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DLLAMA_OPENSSL=OFF \
+            -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=ON \
+            -DLLAMA_BUILD_COMMON=ON \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_UI=OFF \
+            -DLLAMA_USE_PREBUILT_UI=OFF \
+            -DLLAMA_BUILD_BORINGSSL=OFF \
+            -DLLAMA_CONNECT=OFF \
+            -DLLAMA_TOOLS_INSTALL=ON
+          cmake --build ../build-android-arm64 --target llama-server --parallel 2
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          server="$(find artifact/android-server -type f -name '*.so' -print -quit)"
-          test -n "$server"
-          cp "$server" android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+          cp ../build-android-arm64/bin/llama-server android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
-          chmod 755 android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+          readelf -h android/app/src/main/jniLibs/arm64-v8a/libllama-server.so | grep -E 'Class:|Machine:|Type:'
       - name: Configure Android engine service
         run: |
           python - <<'PY'
