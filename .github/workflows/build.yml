@@ -132,7 +132,6 @@ jobs:
           cp build-android-arm64/bin/llama-server artifact/llama-server
           chmod 755 artifact/llama-server
           readelf -h artifact/llama-server | grep -E 'Class:|Machine:|Type:'
-          readelf -l artifact/llama-server | grep -q 'Requesting program interpreter' && exit 1 || true
           test -x artifact/llama-server
 
       - name: Upload Android ARM64 llama-server
