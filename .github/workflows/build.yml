@@ -97,46 +97,51 @@ jobs:
       - name: Checkout adapter
         uses: actions/checkout@v4
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
       - name: Install Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
           add-to-path: false
 
-      - name: Build Android ARM64 libraries
+      - name: Build Android ARM64 llama-server
         run: |
           cmake -S llama.cpp -B build-android-arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared \
-            -DBUILD_SHARED_LIBS=ON \
+            -DANDROID_STL=c++_static \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_STATIC=ON \
+            -DGGML_NATIVE=OFF \
             -DGGML_OPENMP=OFF \
-            -DLLAMA_BUILD_SERVER=OFF \
+            -DLLAMA_OPENSSL=OFF \
+            -DLLAMA_BUILD_SERVER=ON \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_TOOLS=OFF \
-            -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_TOOLS=ON \
+            -DLLAMA_BUILD_COMMON=ON \
             -DLLAMA_BUILD_APP=OFF \
             -DLLAMA_BUILD_UI=OFF \
+            -DLLAMA_USE_PREBUILT_UI=OFF \
+            -DLLAMA_BUILD_BORINGSSL=OFF \
             -DLLAMA_CONNECT=OFF \
-            -DLLAMA_TOOLS_INSTALL=OFF \
-            -DCMAKE_INSTALL_PREFIX="$PWD/android-arm64"
-          cmake --build build-android-arm64 --target install --parallel 2
+            -DLLAMA_TOOLS_INSTALL=ON
+          cmake --build build-android-arm64 --target llama-server --parallel 2
+          mkdir -p artifact
+          cp build-android-arm64/bin/llama-server artifact/llama-server
+          chmod 755 artifact/llama-server
+          readelf -h artifact/llama-server | grep -E 'Class:|Machine:|Type:'
+          readelf -l artifact/llama-server | grep -q 'Requesting program interpreter' && exit 1 || true
+          test -x artifact/llama-server
 
-      - name: Stage Android ARM64 libraries
-        run: |
-          mkdir -p artifact/lib
-          find android-arm64 -type f -name '*.so*' -exec cp -L {} artifact/lib/ \;
-          cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" artifact/lib/
-          readelf -h artifact/lib/libllama.so | grep -E 'Class:|Machine:'
-          test -f artifact/lib/libllama.so
-
-      - name: Upload Android ARM64 libraries
+      - name: Upload Android ARM64 llama-server
         uses: actions/upload-artifact@v4
         with:
-          name: llama-libs-android-arm64
-          path: artifact/lib/
+          name: llama-server-android-arm64
+          path: artifact/llama-server
           if-no-files-found: error
           retention-days: 7
 
@@ -174,6 +179,7 @@ jobs:
           retention-days: 7
 
   build-flutter-android-arm64:
+    needs: build-android-arm64
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -186,6 +192,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -193,6 +204,63 @@ jobs:
           cache: true
       - name: Generate Android runner
         run: flutter create --platforms=android .
+      - name: Download built-in llama-server
+        uses: actions/download-artifact@v4
+        with:
+          name: llama-server-android-arm64
+          path: android/app/src/main/jniLibs/arm64-v8a/
+      - name: Stage executable Android library
+        run: mv android/app/src/main/jniLibs/arm64-v8a/llama-server android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
+      - name: Configure Android engine service
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          android = Path('android/app/src/main')
+          manifest = android / 'AndroidManifest.xml'
+          source = manifest.read_text()
+          source = source.replace(
+              '<application',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />\n<application',
+              1,
+          )
+          source = source.replace(
+              '</application>',
+              '<service android:name=".LlamaEngineService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Run local llama.cpp model inference" /></service>\n</application>',
+              1,
+          )
+          manifest.write_text(source)
+
+          kotlin = next(android.glob('kotlin/**/MainActivity.kt'))
+          source = kotlin.read_text()
+          package = re.search(r'(?m)^package (.+)$', source).group(1)
+          source = source.replace(
+              'import io.flutter.embedding.android.FlutterActivity',
+              'import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine\nimport io.flutter.plugin.common.EventChannel\nimport io.flutter.plugin.common.MethodChannel',
+          )
+          source = source.replace(
+              'class MainActivity : FlutterActivity() {',
+              '''class MainActivity : FlutterActivity() {
+              private lateinit var engineBridge: EngineBridge
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  engineBridge = EngineBridge(this)
+                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "local_model_hub/engine").setMethodCallHandler(engineBridge)
+                  EventChannel(flutterEngine.dartExecutor.binaryMessenger, "local_model_hub/engine_events").setStreamHandler(engineBridge)
+              }
+          ''',
+          )
+          kotlin.write_text(source)
+          implementation = Path('android-src/EngineBridge.kt')
+          code = implementation.read_text().replace('package com.example.local_model_hub', f'package {package}')
+          (kotlin.parent / 'EngineBridge.kt').write_text(code)
+          if 'local_model_hub/engine_events' not in kotlin.read_text():
+              raise SystemExit('Flutter engine channel registration failed')
+          if '.LlamaEngineService' not in manifest.read_text():
+              raise SystemExit('Foreground service manifest entry missing')
+          PY
       - name: Set Android compile SDK
         run: |
           python - <<'PY'
@@ -261,7 +329,20 @@ jobs:
           flutter analyze
           flutter test
       - name: Build Android ARM64 APK
-        run: flutter build apk --release --target-platform android-arm64
+        run: |
+          flutter build apk --release --target-platform android-arm64
+          python - <<'PY'
+          import zipfile
+          apk = 'build/app/outputs/flutter-apk/app-release.apk'
+          with zipfile.ZipFile(apk) as archive:
+              name = 'lib/arm64-v8a/libllama-server.so'
+              data = archive.read(name)
+              if data[:4] != b'\\x7fELF' or data[18:20] != b'\\xb7\\x00':
+                  raise SystemExit('APK server is not an ARM64 ELF executable')
+              if data[16:18] != b'\\x03\\x00':
+                  raise SystemExit('APK server is not a PIE executable')
+          print('APK contains ARM64 PIE llama-server')
+          PY
       - name: Upload Android ARM64 APK
         uses: actions/upload-artifact@v4
         with:

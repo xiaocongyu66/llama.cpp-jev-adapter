@@ -94,18 +94,23 @@ class ApiGateway {
     required String executable,
     required String modelPath,
     required String backendArgs,
+    int port = 8081,
   }) async {
     await stopEngine();
     final args = [
       '--model', modelPath,
       '--host', '127.0.0.1',
-      '--port', '8081',
+      '--port', '$port',
       ...backendArgs.split(RegExp(r'\s+')).where((arg) => arg.isNotEmpty),
     ];
     _engine = await Process.start(executable, args, runInShell: false);
     _engine!.stdout.listen((_) {});
     _engine!.stderr.listen((_) {});
     _upstream = Uri.parse('http://127.0.0.1:8081');
+  }
+
+  void setExternalEngine(int port) {
+    _upstream = Uri.parse('http://127.0.0.1:$port');
   }
 
   Future<void> stopEngine() async {
@@ -120,11 +125,11 @@ class ApiGateway {
     unawaited(_serve(_server!));
   }
 
-  Future<void> stop() async {
+  Future<void> stop({bool stopEngine = true}) async {
     final server = _server;
     _server = null;
     await server?.close(force: true);
-    await stopEngine();
+    if (stopEngine) await this.stopEngine();
   }
 
   Future<void> _serve(HttpServer server) async {

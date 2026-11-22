@@ -1,10 +1,35 @@
+import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
 
+class TestPathProvider extends PathProviderPlatform with MockPlatformInterfaceMixin {
+  TestPathProvider(this.path);
+  final String path;
+  @override
+  Future<String?> getApplicationSupportPath() async => path;
+}
+
 void main() {
+  testWidgets('persists imported models in app storage', (tester) async {
+    final directory = await Directory.systemTemp.createTemp('model-hub-test');
+    addTearDown(() => directory.delete(recursive: true));
+    PathProviderPlatform.instance = TestPathProvider(directory.path);
+    SharedPreferences.setMockInitialValues({});
+    final source = File('${directory.path}/sample.gguf');
+    await source.writeAsBytes([1, 2, 3]);
+    final state = HubState();
+    await state.addModel(source.path);
+    expect(state.models, hasLength(1));
+    expect(state.models.single.path, isNot(source.path));
+    expect(await File(state.models.single.path).readAsBytes(), [1, 2, 3]);
+  });
+
   testWidgets('renders overview and mobile page navigation', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;

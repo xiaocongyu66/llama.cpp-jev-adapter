@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' as widgets;
 
 import 'package:file_picker/file_picker.dart';
@@ -12,6 +14,7 @@ import 'package:material_ui/material_ui.dart' as material;
 import 'package:material_3_expressive/material_3_expressive.dart' as m3e;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_model_hub/api_gateway.dart';
 
@@ -78,6 +81,10 @@ class HubState extends material.ChangeNotifier {
   final List<LocalModel> models = [];
   final List<GatewayKey> keys = [];
   final List<GatewayLog> logs = [];
+  final List<String> engineLogs = [];
+  static const MethodChannel _engineChannel = MethodChannel('local_model_hub/engine');
+  static const EventChannel _engineEvents = EventChannel('local_model_hub/engine_events');
+  StreamSubscription<Object?>? _engineSubscription;
   late ApiGateway gateway;
   LocalModel? selectedModel;
   bool engineRunning = false;
@@ -99,7 +106,8 @@ class HubState extends material.ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final savedModels = prefs.getStringList('models') ?? [];
     for (final path in savedModels) {
-      if (File(path).existsSync()) models.add(LocalModel(name: p.basename(path), path: path));
+      final file = File(path);
+      if (await file.exists()) models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
     }
     enginePath = prefs.getString('llamaServerPath');
     backendArgs = prefs.getString('backendArgs') ?? '--n-gpu-layers auto';
@@ -119,17 +127,32 @@ class HubState extends material.ChangeNotifier {
         logs.add(GatewayLog.fromJson(item));
       }
     }
+    if (Platform.isAndroid) {
+      _engineSubscription = _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
+      engineRunning = await _engineChannel.invokeMethod<bool>('isRunning') ?? false;
+      if (engineRunning) gateway.setExternalEngine(18081);
+    }
     isLoaded = true;
     notifyListeners();
   }
 
-  Future<void> addModel(String path) async {
-    if (models.any((model) => model.path == path)) return;
-    final file = File(path);
-    if (!await file.exists() || !path.toLowerCase().endsWith('.gguf')) {
+  Future<void> addModel(String sourcePath) async {
+    final source = File(sourcePath);
+    if (!await source.exists() || !sourcePath.toLowerCase().endsWith('.gguf')) {
       throw const FormatException('请选择存在的 GGUF 文件');
     }
-    final model = LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length()));
+    final modelDirectory = Directory(p.join((await getApplicationSupportDirectory()).path, 'models'));
+    await modelDirectory.create(recursive: true);
+    final name = p.basename(sourcePath);
+    var destination = p.join(modelDirectory.path, name);
+    var suffix = 1;
+    while (await File(destination).exists()) {
+      if (models.any((model) => model.path == destination)) return;
+      destination = p.join(modelDirectory.path, '${p.basenameWithoutExtension(name)}-$suffix.gguf');
+      suffix++;
+    }
+    final file = await source.copy(destination);
+    final model = LocalModel(name: p.basename(destination), path: destination, sizeLabel: _formatSize(await file.length()));
     models.add(model);
     selectedModel ??= model;
     await _saveModels();
@@ -139,6 +162,7 @@ class HubState extends material.ChangeNotifier {
   Future<void> removeModel(LocalModel model) async {
     if (model.loaded) await stopEngine();
     models.remove(model);
+    if (await File(model.path).exists()) await File(model.path).delete();
     selectedModel = models.isEmpty ? null : models.first;
     await _saveModels();
     notifyListeners();
@@ -159,19 +183,27 @@ class HubState extends material.ChangeNotifier {
   }
 
   Future<void> startEngine(LocalModel model) async {
-    if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
-      throw UnsupportedError('当前版本的模型子进程仅支持桌面端；Android 原生引擎桥接尚未实现');
-    }
-    final executable = enginePath;
-    if (executable == null || executable.isEmpty) throw const FormatException('先设置 llama-server 可执行文件路径');
+    if (kIsWeb || Platform.isIOS) throw UnsupportedError('当前平台不支持本地 llama.cpp 服务');
     await stopEngine();
     try {
-      await gateway.launchEngine(executable: executable, modelPath: model.path, backendArgs: backendArgs ?? '');
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 1);
+      final enginePort = Platform.isAndroid ? 18081 : 8081;
+      if (Platform.isAndroid) {
+        await _engineChannel.invokeMethod<void>('start', {
+          'modelPath': model.path,
+          'backendArgs': backendArgs ?? '',
+          'port': enginePort,
+        });
+        gateway.setExternalEngine(enginePort);
+      } else {
+        final executable = enginePath;
+        if (executable == null || executable.isEmpty) throw const FormatException('先设置 llama-server 可执行文件路径');
+        await gateway.launchEngine(executable: executable, modelPath: model.path, backendArgs: backendArgs ?? '');
+      }
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
       try {
-        for (var attempt = 0; attempt < 60; attempt++) {
+        for (var attempt = 0; attempt < 120; attempt++) {
           try {
-            final request = await client.getUrl(Uri.parse('http://127.0.0.1:8081/health'));
+            final request = await client.getUrl(Uri.parse('http://127.0.0.1:$enginePort/health'));
             final response = await request.close();
             await response.drain<void>();
             if (response.statusCode == HttpStatus.ok) {
@@ -194,21 +226,56 @@ class HubState extends material.ChangeNotifier {
       throw const HttpException('llama-server 启动超时，请检查模型文件和后端参数');
     } catch (error) {
       lastError = error.toString();
-      await gateway.stopEngine();
+      if (Platform.isAndroid) {
+        await _engineChannel.invokeMethod<void>('stop');
+        gateway.setExternalEngine(18081);
+      } else {
+        await gateway.stopEngine();
+      }
       notifyListeners();
       rethrow;
     }
   }
 
+  void _onEngineEvent(Object? event) {
+    if (event is! Map) return;
+    if (event['type'] == 'log' && event['message'] is String) {
+      engineLogs.insert(0, event['message'] as String);
+      if (engineLogs.length > 300) engineLogs.removeLast();
+    } else if (event['type'] == 'status') {
+      engineRunning = true;
+      final model = selectedModel;
+      if (model != null) model.loaded = true;
+    } else if (event['type'] == 'exit' || event['type'] == 'error') {
+      engineRunning = false;
+      apiRunning = false;
+      if (event['type'] == 'error') lastError = event['message'] as String?;
+      for (final model in models) {
+        model.loaded = false;
+      }
+    }
+    notifyListeners();
+  }
+
+  void _onEngineEventError(Object error) {
+    engineLogs.insert(0, error.toString());
+    notifyListeners();
+  }
+
   Future<void> stopApi() async {
-    await gateway.stop();
+    await gateway.stop(stopEngine: false);
     apiRunning = false;
     notifyListeners();
   }
 
   Future<void> stopEngine() async {
     await stopApi();
-    await gateway.stopEngine();
+    if (Platform.isAndroid) {
+      await _engineChannel.invokeMethod<void>('stop');
+      gateway.setExternalEngine(18081);
+    } else {
+      await gateway.stopEngine();
+    }
     for (final model in models) {
       model.loaded = false;
     }
@@ -259,7 +326,11 @@ class HubState extends material.ChangeNotifier {
     return '${(bytes / (1 << 10)).toStringAsFixed(1)} KB';
   }
 
-  Future<void> disposeAsync() async => gateway.dispose();
+  Future<void> disposeAsync() async {
+    await _engineSubscription?.cancel();
+    await gateway.dispose();
+  }
+
   void changed() => notifyListeners();
 }
 
@@ -298,18 +369,11 @@ class _HubShellState extends material.State<HubShell> {
     return HubScope(
       state: state,
       child: material.Scaffold(
-        appBar: wide
-            ? null
-            : material.AppBar(
-                title: material.Text(_pages.firstWhere((item) => item.page == page).label),
-                centerTitle: false,
-              ),
         body: material.Row(
           children: [
             if (wide) _Rail(selected: page, onSelected: _select),
             material.Expanded(
               child: material.SafeArea(
-                top: wide,
                 child: widgets.AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
                   child: _pageContent(),
@@ -318,9 +382,7 @@ class _HubShellState extends material.State<HubShell> {
             ),
           ],
         ),
-        bottomNavigationBar: wide
-            ? null
-            : _FloatingNavigation(selected: page, onSelected: _select),
+        bottomNavigationBar: wide ? null : _FloatingNavigation(selected: page, onSelected: _select),
       ),
     );
   }
@@ -380,17 +442,39 @@ class _FloatingNavigation extends material.StatelessWidget {
 
   @override
   material.Widget build(material.BuildContext context) {
-    return material.NavigationBar(
-      selectedIndex: _pages.indexWhere((item) => item.page == selected),
-      onDestinationSelected: (index) => onSelected(_pages[index].page),
-      destinations: [
-        for (final item in _pages)
-          material.NavigationDestination(
-            icon: material.Icon(item.icon),
-            selectedIcon: material.Icon(item.selectedIcon),
-            label: item.label,
+    final scheme = material.Theme.of(context).colorScheme;
+    return material.SafeArea(
+      minimum: const material.EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: material.Center(
+        child: material.ConstrainedBox(
+          constraints: const widgets.BoxConstraints(maxWidth: 560),
+          child: material.ClipRRect(
+            borderRadius: material.BorderRadius.circular(32),
+            child: material.BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: widgets.DecoratedBox(
+                decoration: material.BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.76),
+                  border: material.Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                  borderRadius: material.BorderRadius.circular(32),
+                ),
+                child: m3e.M3ENavigationBar(
+                  selectedIndex: _pages.indexWhere((item) => item.page == selected),
+                  onDestinationSelected: (index) => onSelected(_pages[index].page),
+                  destinations: [
+                    for (final item in _pages)
+                      m3e.M3ENavigationBarDestination(
+                        icon: material.Icon(item.icon),
+                        selectedIcon: material.Icon(item.selectedIcon),
+                        label: item.label,
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -462,10 +546,7 @@ class OverviewPage extends material.StatelessWidget {
 }
 
 Future<void> _pickModel(material.BuildContext context) async {
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: const ['gguf'],
-  );
+  final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['gguf']);
   final path = result?.files.single.path;
   if (path == null || !context.mounted) return;
   try {
@@ -497,7 +578,7 @@ class _StatusCard extends material.StatelessWidget {
           material.Expanded(child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
             material.Text(loaded ? model!.name : model?.name ?? '尚未加载模型', style: material.Theme.of(context).textTheme.titleLarge),
             const material.SizedBox(height: 5),
-            material.Text(loaded ? 'llama-server 正在运行 · 本机 API 已就绪' : '导入 GGUF 模型并配置 llama-server 后启动推理', style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+            material.Text(loaded ? 'llama-server 正在运行 · 本机 API 已就绪' : '导入 GGUF 模型并启动内置 llama.cpp', style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
           ])),
           material.Icon(material.Icons.circle, size: 10, color: loaded ? scheme.primary : scheme.outline),
         ]),
@@ -594,17 +675,17 @@ class _ApiEndpointCard extends material.StatelessWidget {
                   : state.apiRunning
                       ? () async => state.stopApi()
                       : state.engineRunning && activeKeys.isNotEmpty
-                      ? () async {
-                          final messenger = material.ScaffoldMessenger.of(context);
-                          try {
-                            await state.gateway.start();
-                            state.apiRunning = true;
-                            state.changed();
-                          } catch (error) {
-                            messenger.showSnackBar(material.SnackBar(content: material.Text(error.toString())));
-                          }
-                        }
-                      : null,
+                          ? () async {
+                              final messenger = material.ScaffoldMessenger.of(context);
+                              try {
+                                await state.gateway.start();
+                                state.apiRunning = true;
+                                state.changed();
+                              } catch (error) {
+                                messenger.showSnackBar(material.SnackBar(content: material.Text(error.toString())));
+                              }
+                            }
+                          : null,
               icon: material.Icon(state.apiRunning ? material.Icons.stop : material.Icons.play_arrow),
               label: material.Text(state.apiRunning ? '停止服务' : '启动服务'),
             ),
@@ -701,12 +782,23 @@ class _BackendCard extends material.StatelessWidget {
           child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
             material.Row(children: [
               material.Expanded(child: material.Text('推理后端', style: material.Theme.of(context).textTheme.titleMedium)),
-              material.TextButton.icon(onPressed: () => _configureEngine(context, state), icon: const material.Icon(material.Icons.settings_ethernet), label: const material.Text('配置')),
+              if (!Platform.isAndroid)
+                material.TextButton.icon(onPressed: () => _configureEngine(context, state), icon: const material.Icon(material.Icons.settings_ethernet), label: const material.Text('配置')),
             ]),
             const material.SizedBox(height: 12),
-            _BackendRow(label: '当前后端', value: state.engineRunning ? 'llama-server' : '未运行'),
+            _BackendRow(label: '当前后端', value: state.engineRunning ? '内置 llama-server' : '未运行'),
             _BackendRow(label: 'GPU 参数', value: state.backendArgs?.isNotEmpty == true ? state.backendArgs! : '未配置'),
-            _BackendRow(label: '可执行文件', value: state.enginePath ?? '未设置'),
+            if (!Platform.isAndroid) _BackendRow(label: '可执行文件', value: state.enginePath ?? '未设置'),
+            if (state.engineLogs.isNotEmpty) ...[
+              const material.Divider(height: 24),
+              material.Text('引擎日志', style: material.Theme.of(context).textTheme.titleSmall),
+              const material.SizedBox(height: 8),
+              for (final line in state.engineLogs.take(12))
+                material.Padding(
+                  padding: const material.EdgeInsets.symmetric(vertical: 2),
+                  child: material.SelectableText(line, maxLines: 2, style: material.Theme.of(context).textTheme.bodySmall),
+                ),
+            ],
           ]),
         ),
       );
@@ -965,9 +1057,9 @@ class SettingsPage extends material.StatelessWidget {
           material.ListTile(
             leading: const material.Icon(material.Icons.terminal),
             title: const material.Text('llama-server'),
-            subtitle: material.Text(state.enginePath ?? '点击配置服务可执行文件'),
+            subtitle: material.Text(Platform.isAndroid ? '内置 Android ARM64 引擎' : state.enginePath ?? '点击配置服务可执行文件'),
             trailing: const material.Icon(material.Icons.chevron_right),
-            onTap: () => _configureEngine(context, state),
+            onTap: Platform.isAndroid ? null : () => _configureEngine(context, state),
           ),
           const material.Divider(height: 1, indent: 56),
           material.ListTile(
