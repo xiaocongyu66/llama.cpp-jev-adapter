@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 model/
 *.gguf
-llama.cpp/
 upstream/
+llama.cpp/build*/
+llama.cpp/.venv/
