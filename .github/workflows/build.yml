@@ -53,7 +53,11 @@ jobs:
           mkdir -p artifact/lib
           cp llama.cpp/build/bin/llama-server artifact/
           cp llama.cpp/build/bin/libllama-server-impl.so artifact/lib/
-          find llama.cpp/build -name '*.so' -type f -exec cp -n {} artifact/lib/ \;
+          for binary in artifact/llama-server artifact/lib/libllama-server-impl.so; do
+            ldd "$binary" | awk '/=> \/.*\.so/ {print $3} /^\t\/.*\.so/ {print $1}' | while read -r library; do
+              cp -n "$library" artifact/lib/
+            done
+          done
           LD_LIBRARY_PATH="$PWD/artifact/lib" artifact/llama-server --version
 
       - name: Upload x86_64 server bundle
@@ -123,7 +127,11 @@ jobs:
           mkdir -p artifact/lib
           cp llama.cpp/build/bin/llama-server artifact/
           cp llama.cpp/build/bin/libllama-server-impl.so artifact/lib/
-          find llama.cpp/build -name '*.so' -type f -exec cp -n {} artifact/lib/ \;
+          for binary in artifact/llama-server artifact/lib/libllama-server-impl.so; do
+            ldd "$binary" | awk '/=> \/.*\.so/ {print $3} /^\t\/.*\.so/ {print $1}' | while read -r library; do
+              cp -n "$library" artifact/lib/
+            done
+          done
           LD_LIBRARY_PATH="$PWD/artifact/lib" artifact/llama-server --version
 
       - name: Upload ARM64 server bundle
