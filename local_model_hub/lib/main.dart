@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:material_ui/material_ui.dart';
-import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart' as material;
+import 'package:material_3_expressive/material_3_expressive.dart' as m3e;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,34 +20,34 @@ void main() {
   runApp(const ModelHubApp());
 }
 
-class ModelHubApp extends StatelessWidget {
+class ModelHubApp extends material.StatelessWidget {
   const ModelHubApp({super.key});
 
   @override
-  Widget build(BuildContext context) => DynamicColorBuilder(
+  material.Widget build(material.BuildContext context) => DynamicColorBuilder(
         builder: (lightDynamic, darkDynamic) {
-          const fallbackSeed = Color(0xFF426B58);
-          final lightScheme = lightDynamic ?? ColorScheme.fromSeed(seedColor: fallbackSeed);
-          final darkScheme = darkDynamic ?? ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: Brightness.dark);
-          final themeData = M3EThemeData.light(seedColor: lightScheme.primary);
+          const fallbackSeed = material.Color(0xFF426B58);
+          final lightScheme = lightDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed);
+          final darkScheme = darkDynamic ?? material.ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
+          final themeData = m3e.M3EThemeData.light(seedColor: lightScheme.primary);
           final materialTheme = themeData.toThemeData().copyWith(
             colorScheme: lightScheme,
-            scaffoldBackgroundColor: const Color(0xFFF6F7F4),
-            cardTheme: CardThemeData(
+            scaffoldBackgroundColor: const material.Color(0xFFF6F7F4),
+            cardTheme: material.CardThemeData(
               elevation: 0,
               color: lightScheme.surfaceContainerLow,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
             ),
           );
           final darkMaterialTheme = themeData.deriveDarkTemplate().toThemeData().copyWith(
             colorScheme: darkScheme,
-            cardTheme: CardThemeData(
+            cardTheme: material.CardThemeData(
               elevation: 0,
               color: darkScheme.surfaceContainerLow,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(borderRadius: material.BorderRadius.circular(24)),
             ),
           );
-          return M3EMaterialApp(
+          return m3e.M3EMaterialApp(
             title: '本地模型中心',
             debugShowCheckedModeBanner: false,
             data: themeData,
@@ -70,7 +71,7 @@ class LocalModel {
   bool loaded = false;
 }
 
-class HubState extends ChangeNotifier {
+class HubState extends material.ChangeNotifier {
   final List<LocalModel> models = [];
   final List<GatewayKey> keys = [];
   final List<GatewayLog> logs = [];
@@ -260,17 +261,17 @@ class HubState extends ChangeNotifier {
 
 class HubScope extends InheritedNotifier<HubState> {
   const HubScope({super.key, required HubState state, required super.child}) : super(notifier: state);
-  static HubState of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<HubScope>()!.notifier!;
+  static HubState of(material.BuildContext context) => context.dependOnInheritedWidgetOfExactType<HubScope>()!.notifier!;
 }
 
-class HubShell extends StatefulWidget {
+class HubShell extends material.StatefulWidget {
   const HubShell({super.key});
 
   @override
-  State<HubShell> createState() => _HubShellState();
+  material.State<HubShell> createState() => _HubShellState();
 }
 
-class _HubShellState extends State<HubShell> {
+class _HubShellState extends material.State<HubShell> {
   HubPage page = HubPage.overview;
   final HubState state = HubState();
 
@@ -288,16 +289,16 @@ class _HubShellState extends State<HubShell> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return HubScope(
       state: state,
-      child: Scaffold(
-        body: Row(
+      child: material.Scaffold(
+        body: material.Row(
           children: [
             if (wide) _Rail(selected: page, onSelected: _select),
-            Expanded(
-              child: SafeArea(
+            material.Expanded(
+              child: material.SafeArea(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
                   child: _pageContent(),
@@ -315,7 +316,7 @@ class _HubShellState extends State<HubShell> {
 
   void _select(HubPage value) => setState(() => page = value);
 
-  Widget _pageContent() => switch (page) {
+  material.Widget _pageContent() => switch (page) {
         HubPage.overview => const OverviewPage(),
         HubPage.models => const ModelsPage(),
         HubPage.keys => const KeysPage(),
@@ -333,65 +334,65 @@ class _PageSpec {
 }
 
 const _pages = [
-  _PageSpec(HubPage.overview, '概览', Icons.space_dashboard_outlined, Icons.space_dashboard),
-  _PageSpec(HubPage.models, '模型', Icons.memory_outlined, Icons.memory),
-  _PageSpec(HubPage.keys, 'API 密钥', Icons.key_outlined, Icons.key),
-  _PageSpec(HubPage.activity, '请求日志', Icons.receipt_long_outlined, Icons.receipt_long),
-  _PageSpec(HubPage.settings, '设置', Icons.tune_outlined, Icons.tune),
+  _PageSpec(HubPage.overview, '概览', material.Icons.space_dashboard_outlined, material.Icons.space_dashboard),
+  _PageSpec(HubPage.models, '模型', material.Icons.memory_outlined, material.Icons.memory),
+  _PageSpec(HubPage.keys, 'API 密钥', material.Icons.key_outlined, material.Icons.key),
+  _PageSpec(HubPage.activity, '请求日志', material.Icons.receipt_long_outlined, material.Icons.receipt_long),
+  _PageSpec(HubPage.settings, '设置', material.Icons.tune_outlined, material.Icons.tune),
 ];
 
-class _Rail extends StatelessWidget {
+class _Rail extends material.StatelessWidget {
   const _Rail({required this.selected, required this.onSelected});
   final HubPage selected;
-  final ValueChanged<HubPage> onSelected;
+  final material.ValueChanged<HubPage> onSelected;
 
   @override
-  Widget build(BuildContext context) => NavigationRail(
+  material.Widget build(material.BuildContext context) => material.NavigationRail(
         selectedIndex: _pages.indexWhere((item) => item.page == selected),
         onDestinationSelected: (index) => onSelected(_pages[index].page),
-        labelType: NavigationRailLabelType.all,
+        labelType: material.NavigationRailLabelType.all,
         destinations: [
           for (final item in _pages)
-            NavigationRailDestination(
-              icon: Icon(item.icon),
-              selectedIcon: Icon(item.selectedIcon),
-              label: Text(item.label),
+            material.NavigationRailDestination(
+              icon: material.Icon(item.icon),
+              selectedIcon: material.Icon(item.selectedIcon),
+              label: material.Text(item.label),
             ),
         ],
       );
 }
 
-class _FloatingNavigation extends StatelessWidget {
+class _FloatingNavigation extends material.StatelessWidget {
   const _FloatingNavigation({required this.selected, required this.onSelected});
   final HubPage selected;
-  final ValueChanged<HubPage> onSelected;
+  final material.ValueChanged<HubPage> onSelected;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Center(
-        child: ConstrainedBox(
+  material.Widget build(material.BuildContext context) {
+    final scheme = material.Theme.of(context).colorScheme;
+    return material.SafeArea(
+      minimum: const material.EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: material.Center(
+        child: material.ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: BackdropFilter(
+          child: material.ClipRRect(
+            borderRadius: material.BorderRadius.circular(32),
+            child: material.BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: DecoratedBox(
-                decoration: BoxDecoration(
+                decoration: material.BoxDecoration(
                   color: scheme.surfaceContainerHighest.withValues(alpha: 0.76),
-                  border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
-                  borderRadius: BorderRadius.circular(32),
+                  border: material.Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                  borderRadius: material.BorderRadius.circular(32),
                 ),
-                child: M3ENavigationBar(
+                child: m3e.M3ENavigationBar(
                   selectedIndex: _pages.indexWhere((item) => item.page == selected),
                   onDestinationSelected: (index) => onSelected(_pages[index].page),
                   destinations: [
                     for (final item in _pages)
-                      M3ENavigationBarDestination(
-                        icon: Icon(item.icon),
-                        selectedIcon: Icon(item.selectedIcon),
+                      m3e.M3ENavigationBarDestination(
+                        icon: material.Icon(item.icon),
+                        selectedIcon: material.Icon(item.selectedIcon),
                         label: item.label,
                       ),
                   ],
@@ -405,114 +406,73 @@ class _FloatingNavigation extends StatelessWidget {
   }
 }
 
-class _NavigationItem extends StatelessWidget {
-  const _NavigationItem({required this.item, required this.selected, required this.onTap});
-  final _PageSpec item;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: item.label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          constraints: const BoxConstraints(minWidth: 56, minHeight: 48),
-          padding: EdgeInsets.symmetric(horizontal: selected ? 14 : 10),
-          decoration: BoxDecoration(
-            color: selected ? scheme.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(selected ? item.selectedIcon : item.icon, size: 20),
-              if (selected) ...[
-                const SizedBox(height: 2),
-                Text(item.label, style: Theme.of(context).textTheme.labelSmall),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PageFrame extends StatelessWidget {
+class _PageFrame extends material.StatelessWidget {
   const _PageFrame({required this.title, required this.subtitle, required this.children, this.action});
   final String title;
   final String subtitle;
-  final List<Widget> children;
-  final Widget? action;
+  final List<material.Widget> children;
+  final material.Widget? action;
 
   @override
-  Widget build(BuildContext context) {
-    return ListView(
+  material.Widget build(material.BuildContext context) {
+    return material.ListView(
       key: ValueKey(title),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      padding: const material.EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        material.Row(
+          crossAxisAlignment: material.CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 6),
-                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            material.Expanded(
+              child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+                material.Text(title, style: material.Theme.of(context).textTheme.headlineMedium),
+                const material.SizedBox(height: 6),
+                material.Text(subtitle, style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
               ]),
             ),
-            if (action != null) ...[const SizedBox(width: 12), action!],
+            if (action != null) ...[const material.SizedBox(width: 12), action!],
           ],
         ),
-        const SizedBox(height: 24),
+        const material.SizedBox(height: 24),
         ...children,
       ],
     );
   }
 }
 
-class OverviewPage extends StatelessWidget {
+class OverviewPage extends material.StatelessWidget {
   const OverviewPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     return _PageFrame(
       title: '本地模型中心',
       subtitle: '模型运行状态、API 服务与资源用量',
-      action: FilledButton.icon(
+      action: material.FilledButton.icon(
         onPressed: () => _pickModel(context),
-        icon: const Icon(Icons.add),
-        label: const Text('导入模型'),
+        icon: const material.Icon(material.Icons.add),
+        label: const material.Text('导入模型'),
       ),
       children: [
         _StatusCard(model: state.selectedModel),
-        const SizedBox(height: 16),
+        const material.SizedBox(height: 16),
         const _SectionTitle('运行概况'),
-        const SizedBox(height: 10),
+        const material.SizedBox(height: 10),
         const _StatGrid(),
-        const SizedBox(height: 22),
+        const material.SizedBox(height: 22),
         const _SectionTitle('本地 API'),
-        const SizedBox(height: 10),
+        const material.SizedBox(height: 10),
         const _ApiEndpointCard(),
-        const SizedBox(height: 22),
+        const material.SizedBox(height: 22),
         const _SectionTitle('最近活动'),
-        const SizedBox(height: 10),
+        const material.SizedBox(height: 10),
         const _RecentActivityCard(),
       ],
     );
   }
 }
 
-Future<void> _pickModel(BuildContext context) async {
+Future<void> _pickModel(material.BuildContext context) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: const ['gguf'],
@@ -526,41 +486,41 @@ Future<void> _pickModel(BuildContext context) async {
   }
 }
 
-void _showMessage(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+void _showMessage(material.BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(material.SnackBar(content: material.Text(message)));
 }
 
-class _StatusCard extends StatelessWidget {
+class _StatusCard extends material.StatelessWidget {
   const _StatusCard({required this.model});
   final LocalModel? model;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  material.Widget build(material.BuildContext context) {
+    final scheme = material.Theme.of(context).colorScheme;
     final loaded = model?.loaded ?? false;
-    return Card(
+    return material.Card(
       color: loaded ? scheme.primaryContainer : scheme.surfaceContainerHigh,
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Row(children: [
-          Icon(Icons.memory, size: 36, color: loaded ? scheme.onPrimaryContainer : scheme.primary),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(loaded ? model!.name : model?.name ?? '尚未加载模型', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 5),
-            Text(loaded ? 'llama-server 正在运行 · 本机 API 已就绪' : '导入 GGUF 模型并配置 llama-server 后启动推理', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+      child: material.Padding(
+        padding: const material.EdgeInsets.all(22),
+        child: material.Row(children: [
+          material.Icon(material.Icons.memory, size: 36, color: loaded ? scheme.onPrimaryContainer : scheme.primary),
+          const material.SizedBox(width: 16),
+          material.Expanded(child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+            material.Text(loaded ? model!.name : model?.name ?? '尚未加载模型', style: material.Theme.of(context).textTheme.titleLarge),
+            const material.SizedBox(height: 5),
+            material.Text(loaded ? 'llama-server 正在运行 · 本机 API 已就绪' : '导入 GGUF 模型并配置 llama-server 后启动推理', style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
           ])),
-          Icon(Icons.circle, size: 10, color: loaded ? scheme.primary : scheme.outline),
+          material.Icon(material.Icons.circle, size: 10, color: loaded ? scheme.primary : scheme.outline),
         ]),
       ),
     );
   }
 }
 
-class _StatGrid extends StatelessWidget {
+class _StatGrid extends material.StatelessWidget {
   const _StatGrid();
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final state = HubScope.of(context);
     final count = width >= 1100 ? 4 : 2;
@@ -568,7 +528,7 @@ class _StatGrid extends StatelessWidget {
     final input = state.keys.fold<int>(0, (sum, key) => sum + key.inputTokens);
     final output = state.keys.fold<int>(0, (sum, key) => sum + key.outputTokens);
     final active = state.keys.where((key) => key.enabled).length;
-    return GridView.count(
+    return material.GridView.count(
       crossAxisCount: count,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -576,70 +536,70 @@ class _StatGrid extends StatelessWidget {
       crossAxisSpacing: 10,
       childAspectRatio: width < 420 ? 1.35 : 1.8,
       children: [
-        _MetricCard(label: '输入 tokens', value: '$input', icon: Icons.input),
-        _MetricCard(label: '输出 tokens', value: '$output', icon: Icons.output),
-        _MetricCard(label: '今日请求', value: '$requests', icon: Icons.bolt),
-        _MetricCard(label: '活跃 API key', value: '$active', icon: Icons.key),
+        _MetricCard(label: '输入 tokens', value: '$input', icon: material.Icons.input),
+        _MetricCard(label: '输出 tokens', value: '$output', icon: material.Icons.output),
+        _MetricCard(label: '今日请求', value: '$requests', icon: material.Icons.bolt),
+        _MetricCard(label: '活跃 API key', value: '$active', icon: material.Icons.key),
       ],
     );
   }
 }
 
-class _MetricCard extends StatelessWidget {
+class _MetricCard extends material.StatelessWidget {
   const _MetricCard({required this.label, required this.value, required this.icon});
   final String label;
   final String value;
   final IconData icon;
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Icon(icon, color: Theme.of(context).colorScheme.primary),
-            Text(value, style: Theme.of(context).textTheme.headlineMedium),
-            Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+  material.Widget build(material.BuildContext context) => material.Card(
+        child: material.Padding(
+          padding: const material.EdgeInsets.all(16),
+          child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, mainAxisAlignment: material.MainAxisAlignment.spaceBetween, children: [
+            material.Icon(icon, color: material.Theme.of(context).colorScheme.primary),
+            material.Text(value, style: material.Theme.of(context).textTheme.headlineMedium),
+            material.Text(label, style: material.Theme.of(context).textTheme.labelLarge?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
           ]),
         ),
       );
 }
 
-class _SectionTitle extends StatelessWidget {
+class _SectionTitle extends material.StatelessWidget {
   const _SectionTitle(this.text);
   final String text;
   @override
-  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.titleMedium);
+  material.Widget build(material.BuildContext context) => material.Text(text, style: material.Theme.of(context).textTheme.titleMedium);
 }
 
-class _ApiEndpointCard extends StatelessWidget {
+class _ApiEndpointCard extends material.StatelessWidget {
   const _ApiEndpointCard();
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     final activeKeys = state.keys.where((key) => key.enabled).toList();
     final rpm = activeKeys.fold<int>(0, (min, key) => min == 0 ? key.rpm : min < key.rpm ? min : key.rpm);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.cloud_outlined, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('OpenAI-compatible API')),
-            Chip(avatar: Icon(Icons.circle, size: 9, color: state.apiRunning ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outline), label: Text(state.apiRunning ? '运行中' : '已停止')),
+    return material.Card(
+      child: material.Padding(
+        padding: const material.EdgeInsets.all(18),
+        child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+          material.Row(children: [
+            material.Icon(material.Icons.cloud_outlined, color: material.Theme.of(context).colorScheme.primary),
+            const material.SizedBox(width: 10),
+            const material.Expanded(child: material.Text('OpenAI-compatible API')),
+            material.Chip(avatar: material.Icon(material.Icons.circle, size: 9, color: state.apiRunning ? material.Theme.of(context).colorScheme.primary : material.Theme.of(context).colorScheme.outline), label: material.Text(state.apiRunning ? '运行中' : '已停止')),
           ]),
-          const SizedBox(height: 14),
+          const material.SizedBox(height: 14),
           const SelectableText('http://127.0.0.1:8080/v1'),
-          const SizedBox(height: 12),
-          Row(children: [
-            const Icon(Icons.speed, size: 18),
-            const SizedBox(width: 8),
-            Text('速率上限：${rpm == 0 ? '未设置' : '$rpm RPM'}', style: Theme.of(context).textTheme.bodyMedium),
+          const material.SizedBox(height: 12),
+          material.Row(children: [
+            const material.Icon(material.Icons.speed, size: 18),
+            const material.SizedBox(width: 8),
+            material.Text('速率上限：${rpm == 0 ? '未设置' : '$rpm RPM'}', style: material.Theme.of(context).textTheme.bodyMedium),
             const Spacer(),
-            TextButton(onPressed: () => state.changed(), child: const Text('管理')),
+            material.TextButton(onPressed: () => state.changed(), child: const material.Text('管理')),
           ]),
-          Align(
+          material.Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.tonalIcon(
+            child: material.FilledButton.tonalIcon(
               onPressed: !state.isLoaded
                   ? null
                   : state.apiRunning
@@ -655,13 +615,13 @@ class _ApiEndpointCard extends StatelessWidget {
                           }
                         }
                       : null,
-              icon: Icon(state.apiRunning ? Icons.stop : Icons.play_arrow),
-              label: Text(state.apiRunning ? '停止服务' : '启动服务'),
+              icon: material.Icon(state.apiRunning ? material.Icons.stop : material.Icons.play_arrow),
+              label: material.Text(state.apiRunning ? '停止服务' : '启动服务'),
             ),
           ),
           if (state.lastError != null) ...[
-            const SizedBox(height: 8),
-            Text(state.lastError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const material.SizedBox(height: 8),
+            material.Text(state.lastError!, style: material.TextStyle(color: material.Theme.of(context).colorScheme.error)),
           ],
         ]),
       ),
@@ -669,53 +629,53 @@ class _ApiEndpointCard extends StatelessWidget {
   }
 }
 
-class _RecentActivityCard extends StatelessWidget {
+class _RecentActivityCard extends material.StatelessWidget {
   const _RecentActivityCard();
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final logs = HubScope.of(context).logs.take(4).toList();
     if (logs.isEmpty) {
-      return const _EmptyState(icon: Icons.inbox_outlined, title: '暂无请求记录', body: '启动服务并发起 API 请求后，最近活动会显示在这里。');
+      return const _EmptyState(icon: material.Icons.inbox_outlined, title: '暂无请求记录', body: '启动服务并发起 API 请求后，最近活动会显示在这里。');
     }
-    return Column(children: [for (final log in logs) _RequestLogTile(log: log)]);
+    return material.Column(children: [for (final log in logs) _RequestLogTile(log: log)]);
   }
 }
 
-class ModelsPage extends StatelessWidget {
+class ModelsPage extends material.StatelessWidget {
   const ModelsPage({super.key});
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     return _PageFrame(
       title: '模型',
       subtitle: '导入、管理并启动本地模型',
-      action: FilledButton.icon(onPressed: () => _pickModel(context), icon: const Icon(Icons.add), label: const Text('导入')),
+      action: material.FilledButton.icon(onPressed: () => _pickModel(context), icon: const material.Icon(material.Icons.add), label: const material.Text('导入')),
       children: [
         if (state.models.isEmpty)
-          const _EmptyState(icon: Icons.folder_open, title: '模型库为空', body: '选择 GGUF 文件导入到本地模型库。模型文件保留在设备上。')
+          const _EmptyState(icon: material.Icons.folder_open, title: '模型库为空', body: '选择 GGUF 文件导入到本地模型库。模型文件保留在设备上。')
         else
           for (final model in state.models) _ModelTile(model: model),
-        const SizedBox(height: 18),
+        const material.SizedBox(height: 18),
         _BackendCard(state: state),
       ],
     );
   }
 }
 
-class _ModelTile extends StatelessWidget {
+class _ModelTile extends material.StatelessWidget {
   const _ModelTile({required this.model});
   final LocalModel model;
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
-    return Card(
-      child: ListTile(
-        leading: Icon(model.loaded ? Icons.memory : Icons.sd_storage_outlined, color: Theme.of(context).colorScheme.primary),
-        title: Text(model.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${model.sizeLabel} · ${model.loaded ? '运行中' : model.path}', maxLines: 1, overflow: TextOverflow.ellipsis),
+    return material.Card(
+      child: material.ListTile(
+        leading: material.Icon(model.loaded ? material.Icons.memory : material.Icons.sd_storage_outlined, color: material.Theme.of(context).colorScheme.primary),
+        title: material.Text(model.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: material.Text('${model.sizeLabel} · ${model.loaded ? '运行中' : model.path}', maxLines: 1, overflow: TextOverflow.ellipsis),
         onTap: () => state.selectModel(model),
-        trailing: Wrap(spacing: 4, children: [
-          IconButton(
+        trailing: material.Wrap(spacing: 4, children: [
+          material.IconButton(
             tooltip: model.loaded ? '停止' : '启动',
             onPressed: () async {
               try {
@@ -728,12 +688,12 @@ class _ModelTile extends StatelessWidget {
                 if (context.mounted) _showMessage(context, error.toString());
               }
             },
-            icon: Icon(model.loaded ? Icons.stop_circle_outlined : Icons.play_circle_outline),
+            icon: material.Icon(model.loaded ? material.Icons.stop_circle_outlined : material.Icons.play_circle_outline),
           ),
-          IconButton(
+          material.IconButton(
             tooltip: '移除',
             onPressed: () => state.removeModel(model),
-            icon: const Icon(Icons.delete_outline),
+            icon: const material.Icon(material.Icons.delete_outline),
           ),
         ]),
       ),
@@ -741,19 +701,19 @@ class _ModelTile extends StatelessWidget {
   }
 }
 
-class _BackendCard extends StatelessWidget {
+class _BackendCard extends material.StatelessWidget {
   const _BackendCard({required this.state});
   final HubState state;
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text('推理后端', style: Theme.of(context).textTheme.titleMedium)),
-              TextButton.icon(onPressed: () => _configureEngine(context, state), icon: const Icon(Icons.settings_ethernet), label: const Text('配置')),
+  material.Widget build(material.BuildContext context) => material.Card(
+        child: material.Padding(
+          padding: const material.EdgeInsets.all(18),
+          child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+            material.Row(children: [
+              material.Expanded(child: material.Text('推理后端', style: material.Theme.of(context).textTheme.titleMedium)),
+              material.TextButton.icon(onPressed: () => _configureEngine(context, state), icon: const material.Icon(material.Icons.settings_ethernet), label: const material.Text('配置')),
             ]),
-            const SizedBox(height: 12),
+            const material.SizedBox(height: 12),
             _BackendRow(label: '当前后端', value: state.engineRunning ? 'llama-server' : '未运行'),
             _BackendRow(label: 'GPU 参数', value: state.backendArgs?.isNotEmpty == true ? state.backendArgs! : '未配置'),
             _BackendRow(label: '可执行文件', value: state.enginePath ?? '未设置'),
@@ -762,28 +722,28 @@ class _BackendCard extends StatelessWidget {
       );
 }
 
-Future<void> _configureEngine(BuildContext context, HubState state) async {
-  final args = TextEditingController(text: state.backendArgs ?? '--n-gpu-layers auto');
+Future<void> _configureEngine(material.BuildContext context, HubState state) async {
+  final args = material.TextEditingController(text: state.backendArgs ?? '--n-gpu-layers auto');
   final saved = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('配置推理引擎'),
-      content: SizedBox(
+    builder: (context) => material.AlertDialog(
+      title: const material.Text('配置推理引擎'),
+      content: material.SizedBox(
         width: 440,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(state.enginePath ?? '尚未选择 llama-server'),
-          const SizedBox(height: 12),
-          TextField(controller: args, decoration: const InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
+        child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
+          material.Text(state.enginePath ?? '尚未选择 llama-server'),
+          const material.SizedBox(height: 12),
+          TextField(controller: args, decoration: const material.InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        TextButton.icon(
-          onPressed: () => Navigator.pop(context, '__pick__'),
-          icon: const Icon(Icons.folder_open),
-          label: const Text('选择可执行文件'),
+        material.TextButton(onPressed: () => material.Navigator.pop(context), child: const material.Text('取消')),
+        material.TextButton.icon(
+          onPressed: () => material.Navigator.pop(context, '__pick__'),
+          icon: const material.Icon(material.Icons.folder_open),
+          label: const material.Text('选择可执行文件'),
         ),
-        FilledButton(onPressed: () => Navigator.pop(context, '__save__'), child: const Text('保存')),
+        material.FilledButton(onPressed: () => material.Navigator.pop(context, '__save__'), child: const material.Text('保存')),
       ],
     ),
   );
@@ -798,64 +758,64 @@ Future<void> _configureEngine(BuildContext context, HubState state) async {
   }
 }
 
-class _BackendRow extends StatelessWidget {
+class _BackendRow extends material.StatelessWidget {
   const _BackendRow({required this.label, required this.value});
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(children: [
-          Expanded(child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
-          Text(value),
+  material.Widget build(material.BuildContext context) => material.Padding(
+        padding: const material.EdgeInsets.symmetric(vertical: 7),
+        child: material.Row(children: [
+          material.Expanded(child: material.Text(label, style: material.TextStyle(color: material.Theme.of(context).colorScheme.onSurfaceVariant))),
+          material.Text(value),
         ]),
       );
 }
 
-class KeysPage extends StatelessWidget {
+class KeysPage extends material.StatelessWidget {
   const KeysPage({super.key});
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     return _PageFrame(
       title: 'API 密钥',
       subtitle: '为本地 API 创建独立凭证并配置访问限制',
-      action: FilledButton.icon(onPressed: () => _createKey(context, state), icon: const Icon(Icons.add), label: const Text('新建密钥')),
+      action: material.FilledButton.icon(onPressed: () => _createKey(context, state), icon: const material.Icon(material.Icons.add), label: const material.Text('新建密钥')),
       children: [
         if (state.keys.isEmpty)
-          const _EmptyState(icon: Icons.key_off, title: '暂无密钥', body: '创建密钥后，客户端可使用 Bearer Token 访问本地 API。')
+          const _EmptyState(icon: material.Icons.key_off, title: '暂无密钥', body: '创建密钥后，客户端可使用 Bearer Token 访问本地 API。')
         else
           for (final key in state.keys) _KeyTile(apiKey: key),
-        const SizedBox(height: 18),
+        const material.SizedBox(height: 18),
         const _SecurityNote(),
       ],
     );
   }
 }
 
-class _KeyTile extends StatelessWidget {
+class _KeyTile extends material.StatelessWidget {
   const _KeyTile({required this.apiKey});
   final GatewayKey apiKey;
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Column(children: [
-          SwitchListTile(
+    return material.Card(
+      child: material.Padding(
+        padding: const material.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: material.Column(children: [
+          material.SwitchListTile(
             value: apiKey.enabled,
             onChanged: (value) => state.updateKey(apiKey, enabled: value),
-            secondary: const Icon(Icons.key),
-            title: Text(apiKey.name),
-            subtitle: Text('RPM ${apiKey.rpm} · 请求 ${apiKey.requests} · ${apiKey.inputTokens + apiKey.outputTokens} tokens'),
+            secondary: const material.Icon(material.Icons.key),
+            title: material.Text(apiKey.name),
+            subtitle: material.Text('RPM ${apiKey.rpm} · 请求 ${apiKey.requests} · ${apiKey.inputTokens + apiKey.outputTokens} tokens'),
           ),
-          Row(children: [
-            Expanded(child: Text('每分钟请求上限', style: Theme.of(context).textTheme.bodyMedium)),
-            IconButton(onPressed: apiKey.rpm > 1 ? () => state.updateKey(apiKey, rpm: apiKey.rpm - 1) : null, icon: const Icon(Icons.remove)),
-            Text('${apiKey.rpm}', style: Theme.of(context).textTheme.titleMedium),
-            IconButton(onPressed: () => state.updateKey(apiKey, rpm: apiKey.rpm + 1), icon: const Icon(Icons.add)),
-            IconButton(tooltip: '删除密钥', onPressed: () => state.removeKey(apiKey), icon: const Icon(Icons.delete_outline)),
+          material.Row(children: [
+            material.Expanded(child: material.Text('每分钟请求上限', style: material.Theme.of(context).textTheme.bodyMedium)),
+            material.IconButton(onPressed: apiKey.rpm > 1 ? () => state.updateKey(apiKey, rpm: apiKey.rpm - 1) : null, icon: const material.Icon(material.Icons.remove)),
+            material.Text('${apiKey.rpm}', style: material.Theme.of(context).textTheme.titleMedium),
+            material.IconButton(onPressed: () => state.updateKey(apiKey, rpm: apiKey.rpm + 1), icon: const material.Icon(material.Icons.add)),
+            material.IconButton(tooltip: '删除密钥', onPressed: () => state.removeKey(apiKey), icon: const material.Icon(material.Icons.delete_outline)),
           ]),
         ]),
       ),
@@ -863,30 +823,30 @@ class _KeyTile extends StatelessWidget {
   }
 }
 
-Future<void> _createKey(BuildContext context, HubState state) async {
-  final name = TextEditingController();
-  final rpm = TextEditingController(text: '60');
+Future<void> _createKey(material.BuildContext context, HubState state) async {
+  final name = material.TextEditingController();
+  final rpm = material.TextEditingController(text: '60');
   final result = await showDialog<(String, int)?>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('新建 API 密钥'),
-      content: SizedBox(
+    builder: (context) => material.AlertDialog(
+      title: const material.Text('新建 API 密钥'),
+      content: material.SizedBox(
         width: 400,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: '名称')),
-          const SizedBox(height: 12),
-          TextField(controller: rpm, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '每分钟请求上限')),
+        child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
+          TextField(controller: name, autofocus: true, decoration: const material.InputDecoration(labelText: '名称')),
+          const material.SizedBox(height: 12),
+          TextField(controller: rpm, keyboardType: TextInputType.number, decoration: const material.InputDecoration(labelText: '每分钟请求上限')),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(
+        material.TextButton(onPressed: () => material.Navigator.pop(context), child: const material.Text('取消')),
+        material.FilledButton(
           onPressed: () {
             final keyName = name.text.trim();
             final limit = int.tryParse(rpm.text) ?? 60;
-            if (keyName.isNotEmpty && limit > 0) Navigator.pop(context, (keyName, limit));
+            if (keyName.isNotEmpty && limit > 0) material.Navigator.pop(context, (keyName, limit));
           },
-          child: const Text('创建'),
+          child: const material.Text('创建'),
         ),
       ],
     ),
@@ -898,35 +858,35 @@ Future<void> _createKey(BuildContext context, HubState state) async {
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
-      icon: const Icon(Icons.key),
-      title: const Text('密钥已创建'),
+    builder: (context) => material.AlertDialog(
+      icon: const material.Icon(material.Icons.key),
+      title: const material.Text('密钥已创建'),
       content: SelectableText(key.secret),
-      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('完成'))],
+      actions: [material.FilledButton(onPressed: () => material.Navigator.pop(context), child: const material.Text('完成'))],
     ),
   );
 }
 
-class _SecurityNote extends StatelessWidget {
+class _SecurityNote extends material.StatelessWidget {
   const _SecurityNote();
   @override
-  Widget build(BuildContext context) => Card(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        child: const Padding(
-          padding: EdgeInsets.all(18),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.shield_outlined),
-            SizedBox(width: 12),
-            Expanded(child: Text('密钥仅在创建时显示一次。用量按密钥分别统计，可单独设置每分钟请求数上限。')),
+  material.Widget build(material.BuildContext context) => material.Card(
+        color: material.Theme.of(context).colorScheme.secondaryContainer,
+        child: const material.Padding(
+          padding: material.EdgeInsets.all(18),
+          child: material.Row(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+            material.Icon(material.Icons.shield_outlined),
+            material.SizedBox(width: 12),
+            material.Expanded(child: material.Text('密钥仅在创建时显示一次。用量按密钥分别统计，可单独设置每分钟请求数上限。')),
           ]),
         ),
       );
 }
 
-class ActivityPage extends StatelessWidget {
+class ActivityPage extends material.StatelessWidget {
   const ActivityPage({super.key});
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     final requests = state.keys.fold<int>(0, (sum, key) => sum + key.requests);
     final input = state.keys.fold<int>(0, (sum, key) => sum + key.inputTokens);
@@ -934,12 +894,12 @@ class ActivityPage extends StatelessWidget {
     return _PageFrame(
       title: '请求日志',
       subtitle: '查看请求状态、token 用量和延迟',
-      action: IconButton(onPressed: () => state.changed(), tooltip: '刷新', icon: const Icon(Icons.refresh)),
+      action: material.IconButton(onPressed: () => state.changed(), tooltip: '刷新', icon: const material.Icon(material.Icons.refresh)),
       children: [
         _UsageSummary(requests: requests, input: input, output: output),
-        const SizedBox(height: 16),
+        const material.SizedBox(height: 16),
         if (state.logs.isEmpty)
-          const _EmptyState(icon: Icons.receipt_long, title: '暂无请求', body: 'API 收到请求后，日志会显示在这里。')
+          const _EmptyState(icon: material.Icons.receipt_long, title: '暂无请求', body: 'API 收到请求后，日志会显示在这里。')
         else
           for (final log in state.logs) _RequestLogTile(log: log),
       ],
@@ -947,113 +907,113 @@ class ActivityPage extends StatelessWidget {
   }
 }
 
-class _RequestLogTile extends StatelessWidget {
+class _RequestLogTile extends material.StatelessWidget {
   const _RequestLogTile({required this.log});
   final GatewayLog log;
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final ok = log.status >= 200 && log.status < 400;
-    return Card(
-      child: ListTile(
-        leading: Icon(ok ? Icons.check_circle_outline : Icons.error_outline, color: ok ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.error),
-        title: Text('${log.path} · ${log.status}'),
-        subtitle: Text('${log.keyName} · ${log.inputTokens} in / ${log.outputTokens} out tokens · ${log.latencyMs} ms'),
-        trailing: Text('${log.time.hour.toString().padLeft(2, '0')}:${log.time.minute.toString().padLeft(2, '0')}:${log.time.second.toString().padLeft(2, '0')}'),
+    return material.Card(
+      child: material.ListTile(
+        leading: material.Icon(ok ? material.Icons.check_circle_outline : material.Icons.error_outline, color: ok ? material.Theme.of(context).colorScheme.primary : material.Theme.of(context).colorScheme.error),
+        title: material.Text('${log.path} · ${log.status}'),
+        subtitle: material.Text('${log.keyName} · ${log.inputTokens} in / ${log.outputTokens} out tokens · ${log.latencyMs} ms'),
+        trailing: material.Text('${log.time.hour.toString().padLeft(2, '0')}:${log.time.minute.toString().padLeft(2, '0')}:${log.time.second.toString().padLeft(2, '0')}'),
       ),
     );
   }
 }
 
-class _UsageSummary extends StatelessWidget {
+class _UsageSummary extends material.StatelessWidget {
   const _UsageSummary({required this.requests, required this.input, required this.output});
   final int requests;
   final int input;
   final int output;
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('累计用量', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 14),
-            Row(children: [
-              Expanded(child: _UsageValue(label: '请求数', value: '$requests')),
-              Expanded(child: _UsageValue(label: '输入 tokens', value: '$input')),
-              Expanded(child: _UsageValue(label: '输出 tokens', value: '$output')),
+  material.Widget build(material.BuildContext context) => material.Card(
+        child: material.Padding(
+          padding: const material.EdgeInsets.all(18),
+          child: material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+            material.Text('累计用量', style: material.Theme.of(context).textTheme.titleMedium),
+            const material.SizedBox(height: 14),
+            material.Row(children: [
+              material.Expanded(child: _UsageValue(label: '请求数', value: '$requests')),
+              material.Expanded(child: _UsageValue(label: '输入 tokens', value: '$input')),
+              material.Expanded(child: _UsageValue(label: '输出 tokens', value: '$output')),
             ]),
           ]),
         ),
       );
 }
 
-class _UsageValue extends StatelessWidget {
+class _UsageValue extends material.StatelessWidget {
   const _UsageValue({required this.label, required this.value});
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+  material.Widget build(material.BuildContext context) => material.Column(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+        material.Text(value, style: material.Theme.of(context).textTheme.headlineSmall),
+        const material.SizedBox(height: 4),
+        material.Text(label, style: material.Theme.of(context).textTheme.labelMedium?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends material.StatelessWidget {
   const SettingsPage({super.key});
   @override
-  Widget build(BuildContext context) {
+  material.Widget build(material.BuildContext context) {
     final state = HubScope.of(context);
     return _PageFrame(
       title: '设置',
       subtitle: '外观、服务和运行参数',
       children: [
-        Card(child: Column(children: [
-          const ListTile(leading: Icon(Icons.palette_outlined), title: Text('外观'), subtitle: Text('跟随系统 · Material 3 Expressive')),
-          const Divider(height: 1, indent: 56),
-          const ListTile(leading: Icon(Icons.language), title: Text('语言'), subtitle: Text('简体中文')),
-          const Divider(height: 1, indent: 56),
-          ListTile(
-            leading: const Icon(Icons.terminal),
-            title: const Text('llama-server'),
-            subtitle: Text(state.enginePath ?? '点击配置服务可执行文件'),
-            trailing: const Icon(Icons.chevron_right),
+        material.Card(child: material.Column(children: [
+          const material.ListTile(leading: material.Icon(material.Icons.palette_outlined), title: material.Text('外观'), subtitle: material.Text('跟随系统 · material.Material 3 Expressive')),
+          const material.Divider(height: 1, indent: 56),
+          const material.ListTile(leading: material.Icon(material.Icons.language), title: material.Text('语言'), subtitle: material.Text('简体中文')),
+          const material.Divider(height: 1, indent: 56),
+          material.ListTile(
+            leading: const material.Icon(material.Icons.terminal),
+            title: const material.Text('llama-server'),
+            subtitle: material.Text(state.enginePath ?? '点击配置服务可执行文件'),
+            trailing: const material.Icon(material.Icons.chevron_right),
             onTap: () => _configureEngine(context, state),
           ),
-          const Divider(height: 1, indent: 56),
-          ListTile(
-            leading: const Icon(Icons.tune),
-            title: const Text('GPU / 启动参数'),
-            subtitle: Text(state.backendArgs?.isNotEmpty == true ? state.backendArgs! : '未配置'),
-            trailing: const Icon(Icons.chevron_right),
+          const material.Divider(height: 1, indent: 56),
+          material.ListTile(
+            leading: const material.Icon(material.Icons.tune),
+            title: const material.Text('GPU / 启动参数'),
+            subtitle: material.Text(state.backendArgs?.isNotEmpty == true ? state.backendArgs! : '未配置'),
+            trailing: const material.Icon(material.Icons.chevron_right),
             onTap: () => _configureEngine(context, state),
           ),
         ])),
-        const SizedBox(height: 16),
-        Card(child: Column(children: const [
-          ListTile(leading: Icon(Icons.info_outline), title: Text('关于'), subtitle: Text('Local Model Hub · 0.1.0')),
+        const material.SizedBox(height: 16),
+        material.Card(child: material.Column(children: const [
+          material.ListTile(leading: material.Icon(material.Icons.info_outline), title: material.Text('关于'), subtitle: material.Text('Local Model Hub · 0.1.0')),
         ])),
       ],
     );
   }
 }
 
-class _EmptyState extends StatelessWidget {
+class _EmptyState extends material.StatelessWidget {
   const _EmptyState({required this.icon, required this.title, required this.body});
   final IconData icon;
   final String title;
   final String body;
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 36, 24, 36),
-          child: Column(children: [
-            Icon(icon, size: 34, color: Theme.of(context).colorScheme.secondary),
-            const SizedBox(height: 14),
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
-            ConstrainedBox(
+  material.Widget build(material.BuildContext context) => material.Card(
+        child: material.Padding(
+          padding: const material.EdgeInsets.fromLTRB(24, 36, 24, 36),
+          child: material.Column(children: [
+            material.Icon(icon, size: 34, color: material.Theme.of(context).colorScheme.secondary),
+            const material.SizedBox(height: 14),
+            material.Text(title, style: material.Theme.of(context).textTheme.titleMedium),
+            const material.SizedBox(height: 6),
+            material.ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Text(body, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              child: material.Text(body, textAlign: TextAlign.center, style: material.Theme.of(context).textTheme.bodyMedium?.copyWith(color: material.Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
           ]),
         ),
