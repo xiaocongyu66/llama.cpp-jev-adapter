@@ -213,12 +213,20 @@ jobs:
           gradle.write_text(source)
           print('\n'.join(line for line in source.splitlines() if 'compileSdk' in line))
           PY
-      - name: Configure Kotlin JVM target
+      - name: Configure Android Gradle DSL
         run: |
+          cat >> android/gradle.properties <<'EOF'
+          android.newDsl=true
+          EOF
           cat >> android/app/build.gradle.kts <<'EOF'
 
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              kotlinOptions.jvmTarget = "11"
+          import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+          tasks.withType<KotlinCompile>().configureEach {
+              compilerOptions {
+                  jvmTarget.set(JvmTarget.JVM_11)
+              }
           }
           EOF
       - name: Resolve packages
