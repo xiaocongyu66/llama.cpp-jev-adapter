@@ -28,8 +28,8 @@ class ModelHubApp extends material.StatelessWidget {
   material.Widget build(material.BuildContext context) => dynamic_color.DynamicColorBuilder(
         builder: (lightDynamic, darkDynamic) {
           const fallbackSeed = material.Color(0xFF426B58);
-          final lightScheme = lightDynamic ?? dynamic_color.ColorScheme.fromSeed(seedColor: fallbackSeed);
-          final darkScheme = darkDynamic ?? dynamic_color.ColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
+          final lightScheme = lightDynamic ?? m3e.M3EColorScheme.fromSeed(seedColor: fallbackSeed);
+          final darkScheme = darkDynamic ?? m3e.M3EColorScheme.fromSeed(seedColor: fallbackSeed, brightness: material.Brightness.dark);
           final themeData = m3e.M3EThemeData.light(seedColor: lightScheme.primary);
           final materialTheme = themeData.toThemeData().copyWith(
             colorScheme: lightScheme,
@@ -488,7 +488,7 @@ Future<void> _pickModel(material.BuildContext context) async {
 }
 
 void _showMessage(material.BuildContext context, String message) {
-  widgets.ScaffoldMessenger.of(context).showSnackBar(material.SnackBar(content: material.Text(message)));
+  material.ScaffoldMessenger.of(context).showSnackBar(material.SnackBar(content: material.Text(message)));
 }
 
 class _StatusCard extends material.StatelessWidget {
@@ -589,7 +589,7 @@ class _ApiEndpointCard extends material.StatelessWidget {
             material.Chip(avatar: material.Icon(material.Icons.circle, size: 9, color: state.apiRunning ? material.Theme.of(context).colorScheme.primary : material.Theme.of(context).colorScheme.outline), label: material.Text(state.apiRunning ? '运行中' : '已停止')),
           ]),
           const material.SizedBox(height: 14),
-          const widgets.SelectableText('http://127.0.0.1:8080/v1'),
+          const material.SelectableText('http://127.0.0.1:8080/v1'),
           const material.SizedBox(height: 12),
           material.Row(children: [
             const material.Icon(material.Icons.speed, size: 18),
@@ -725,7 +725,7 @@ class _BackendCard extends material.StatelessWidget {
 
 Future<void> _configureEngine(material.BuildContext context, HubState state) async {
   final args = material.TextEditingController(text: state.backendArgs ?? '--n-gpu-layers auto');
-  final saved = await widgets.showDialog<String>(
+  final saved = await material.showDialog<String>(
     context: context,
     builder: (context) => material.AlertDialog(
       title: const material.Text('配置推理引擎'),
@@ -734,7 +734,7 @@ Future<void> _configureEngine(material.BuildContext context, HubState state) asy
         child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
           material.Text(state.enginePath ?? '尚未选择 llama-server'),
           const material.SizedBox(height: 12),
-          widgets.TextField(controller: args, decoration: const material.InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
+          material.TextField(controller: args, decoration: const material.InputDecoration(labelText: '启动参数', hintText: '--n-gpu-layers auto')),
         ]),
       ),
       actions: [
@@ -827,16 +827,16 @@ class _KeyTile extends material.StatelessWidget {
 Future<void> _createKey(material.BuildContext context, HubState state) async {
   final name = material.TextEditingController();
   final rpm = material.TextEditingController(text: '60');
-  final result = await widgets.showDialog<(String, int)?>(
+  final result = await material.showDialog<(String, int)?>(
     context: context,
     builder: (context) => material.AlertDialog(
       title: const material.Text('新建 API 密钥'),
       content: material.SizedBox(
         width: 400,
         child: material.Column(mainAxisSize: material.MainAxisSize.min, children: [
-          widgets.TextField(controller: name, autofocus: true, decoration: const material.InputDecoration(labelText: '名称')),
+          material.TextField(controller: name, autofocus: true, decoration: const material.InputDecoration(labelText: '名称')),
           const material.SizedBox(height: 12),
-          widgets.TextField(controller: rpm, keyboardType: widgets.TextInputType.number, decoration: const material.InputDecoration(labelText: '每分钟请求上限')),
+          material.TextField(controller: rpm, keyboardType: widgets.TextInputType.number, decoration: const material.InputDecoration(labelText: '每分钟请求上限')),
         ]),
       ),
       actions: [
@@ -857,12 +857,12 @@ Future<void> _createKey(material.BuildContext context, HubState state) async {
   if (result == null || !context.mounted) return;
   final key = await state.addKey(result.$1, result.$2);
   if (!context.mounted) return;
-  await widgets.showDialog<void>(
+  await material.showDialog<void>(
     context: context,
     builder: (context) => material.AlertDialog(
       icon: const material.Icon(material.Icons.key),
       title: const material.Text('密钥已创建'),
-      content: widgets.SelectableText(key.secret),
+      content: material.SelectableText(key.secret),
       actions: [material.FilledButton(onPressed: () => material.Navigator.pop(context), child: const material.Text('完成'))],
     ),
   );
