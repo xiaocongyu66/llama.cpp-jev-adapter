@@ -148,11 +148,10 @@ jobs:
     steps:
       - name: Checkout adapter
         uses: actions/checkout@v4
-      - name: Set up Flutter
+      - name: Set up Flutter ARM64
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
-          flutter-version: '3.50.1'
+          channel: master
           cache: true
       - name: Generate Linux runner
         run: flutter create --platforms=linux .
