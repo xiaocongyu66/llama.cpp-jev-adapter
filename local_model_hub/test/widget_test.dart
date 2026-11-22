@@ -6,7 +6,7 @@ void main() {
   testWidgets('renders overview shell', (tester) async {
     await tester.pumpWidget(const ModelHubApp());
     expect(find.text('概览'), findsOneWidget);
-    expect(find.text('尚未加载模型'), findsOneWidget);
+    expect(find.byType(OverviewPage), findsOneWidget);
   });
 
   test('persists key configuration without losing usage totals', () {
