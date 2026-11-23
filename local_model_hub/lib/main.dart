@@ -75,11 +75,16 @@ class LocalModel {
 }
 
 class HubState extends material.ChangeNotifier {
-  HubState({Future<Directory> Function()? modelDirectoryProvider}) : _modelDirectoryProvider = modelDirectoryProvider ?? _defaultModelDirectory {
+  HubState({
+    Future<Directory> Function()? modelDirectoryProvider,
+    Future<SharedPreferences> Function()? preferencesProvider,
+  })  : _modelDirectoryProvider = modelDirectoryProvider ?? _defaultModelDirectory,
+        _preferencesProvider = preferencesProvider ?? SharedPreferences.getInstance {
     gateway = ApiGateway(keys: keys, onLog: _onGatewayLog);
   }
 
   final Future<Directory> Function() _modelDirectoryProvider;
+  final Future<SharedPreferences> Function() _preferencesProvider;
 
   static Future<Directory> _defaultModelDirectory() async =>
       Directory(p.join((await getApplicationSupportDirectory()).path, 'models'));
@@ -96,6 +101,7 @@ class HubState extends material.ChangeNotifier {
   bool engineRunning = false;
   bool apiRunning = false;
   bool isLoaded = false;
+  Future<void>? _loadFuture;
   String? enginePath;
   String? backendArgs;
   String? lastError;
@@ -108,38 +114,64 @@ class HubState extends material.ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedModels = prefs.getStringList('models') ?? [];
-    for (final path in savedModels) {
-      final file = File(path);
-      if (await file.exists()) models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
-    }
-    enginePath = prefs.getString('llamaServerPath');
-    backendArgs = prefs.getString('backendArgs') ?? '--n-gpu-layers auto';
-    final storedKeys = await const FlutterSecureStorage().read(key: 'apiKeys');
-    if (storedKeys != null) {
-      for (final item in (jsonDecode(storedKeys) as List).cast<Map<String, Object?>>()) {
-        keys.add(GatewayKey.fromJson(item));
-      }
-    }
-    for (final key in keys) {
-      key.requestTimes.removeWhere((time) => DateTime.now().difference(time) >= const Duration(minutes: 1));
-    }
-    selectedModel = models.isEmpty ? null : models.first;
-    final savedLogs = prefs.getString('requestLogs');
-    if (savedLogs != null) {
-      for (final item in (jsonDecode(savedLogs) as List).cast<Map<String, Object?>>()) {
-        logs.add(GatewayLog.fromJson(item));
-      }
-    }
-    if (Platform.isAndroid) {
-      _engineSubscription = _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
-      engineRunning = await _engineChannel.invokeMethod<bool>('isRunning') ?? false;
-      if (engineRunning) gateway.setExternalEngine(18081);
-    }
-    isLoaded = true;
+  Future<void> load() => _loadFuture ??= _load();
+
+  Future<void> _load() async {
+    lastError = null;
     notifyListeners();
+    try {
+      final preferencesFuture = _preferencesProvider();
+      final prefs = await Future.any<SharedPreferences>([
+        preferencesFuture,
+        Future<SharedPreferences>.delayed(
+          const Duration(seconds: 5),
+          () => throw TimeoutException('Preferences loading timed out'),
+        ),
+      ]);
+      final savedModels = prefs.getStringList('models') ?? [];
+      for (final path in savedModels) {
+        final file = File(path);
+        if (await file.exists()) models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
+      }
+      enginePath = prefs.getString('llamaServerPath');
+      backendArgs = prefs.getString('backendArgs') ?? '--n-gpu-layers auto';
+      selectedModel = models.isEmpty ? null : models.first;
+
+      try {
+        final storedKeys = await const FlutterSecureStorage()
+            .read(key: 'apiKeys')
+            .timeout(const Duration(seconds: 5));
+        if (storedKeys != null) {
+          for (final item in (jsonDecode(storedKeys) as List).cast<Map<String, Object?>>()) {
+            keys.add(GatewayKey.fromJson(item));
+          }
+        }
+        for (final key in keys) {
+          key.requestTimes.removeWhere((time) => DateTime.now().difference(time) >= const Duration(minutes: 1));
+        }
+        final savedLogs = prefs.getString('requestLogs');
+        if (savedLogs != null) {
+          for (final item in (jsonDecode(savedLogs) as List).cast<Map<String, Object?>>()) {
+            logs.add(GatewayLog.fromJson(item));
+          }
+        }
+        if (Platform.isAndroid) {
+          _engineSubscription = _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
+          engineRunning = await _engineChannel
+                  .invokeMethod<bool>('isRunning')
+                  .timeout(const Duration(seconds: 5)) ??
+              false;
+          if (engineRunning) gateway.setExternalEngine(18081);
+        }
+      } catch (error) {
+        lastError = '部分本地状态恢复失败：$error';
+      }
+    } catch (error) {
+      lastError = '本地设置读取失败：$error';
+    } finally {
+      isLoaded = true;
+      notifyListeners();
+    }
   }
 
   Future<void> addModel(String sourcePath) async {
@@ -356,18 +388,22 @@ class HubShell extends material.StatefulWidget {
 class _HubShellState extends material.State<HubShell> {
   HubPage page = HubPage.overview;
   late final HubState state;
+  late final bool ownsState;
 
   @override
   void initState() {
     super.initState();
+    ownsState = widget.state == null;
     state = widget.state ?? HubState();
-    if (widget.state == null) state.load();
+    state.load();
   }
 
   @override
   void dispose() {
-    state.disposeAsync();
-    state.dispose();
+    if (ownsState) {
+      state.disposeAsync();
+      state.dispose();
+    }
     super.dispose();
   }
 
@@ -382,12 +418,10 @@ class _HubShellState extends material.State<HubShell> {
             if (wide) _Rail(selected: page, onSelected: _select),
             material.Expanded(
               child: material.SafeArea(
-                child: state.isLoaded
-                    ? widgets.AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: _pageContent(),
-                      )
-                    : const material.Center(child: material.CircularProgressIndicator()),
+                child: widgets.AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: _pageContent(),
+                ),
               ),
             ),
           ],
@@ -456,8 +490,9 @@ class _FloatingNavigation extends material.StatelessWidget {
     return material.SafeArea(
       minimum: const material.EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: material.Center(
+        heightFactor: 1,
         child: material.ConstrainedBox(
-          constraints: const widgets.BoxConstraints(maxWidth: 560),
+          constraints: const widgets.BoxConstraints(maxWidth: 560, maxHeight: 88),
           child: material.ClipRRect(
             borderRadius: material.BorderRadius.circular(32),
             child: material.BackdropFilter(
@@ -515,6 +550,32 @@ class _PageFrame extends material.StatelessWidget {
             if (action != null) ...[const material.SizedBox(width: 12), action!],
           ],
         ),
+        if (!HubScope.of(context).isLoaded) ...[
+          const material.LinearProgressIndicator(),
+          const material.SizedBox(height: 16),
+        ],
+        if (HubScope.of(context).lastError != null) ...[
+          material.Card(
+            color: material.Theme.of(context).colorScheme.errorContainer,
+            child: material.Padding(
+              padding: const material.EdgeInsets.all(14),
+              child: material.Row(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
+                material.Icon(material.Icons.error_outline, color: material.Theme.of(context).colorScheme.onErrorContainer),
+                const material.SizedBox(width: 10),
+                material.Expanded(child: material.Text(HubScope.of(context).lastError!)),
+                material.IconButton(
+                  tooltip: '关闭',
+                  onPressed: () {
+                    HubScope.of(context).lastError = null;
+                    HubScope.of(context).changed();
+                  },
+                  icon: const material.Icon(material.Icons.close),
+                ),
+              ]),
+            ),
+          ),
+          const material.SizedBox(height: 16),
+        ],
         const material.SizedBox(height: 24),
         ...children,
       ],

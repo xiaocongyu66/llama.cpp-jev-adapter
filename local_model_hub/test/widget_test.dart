@@ -1,17 +1,42 @@
+import 'dart:async';
 import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('renders the page before loading saved preferences', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final preferences = Completer<SharedPreferences>();
+    final state = HubState(preferencesProvider: () => preferences.future);
+    await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
+    await tester.pump();
+
+    expect(find.byType(OverviewPage), findsOneWidget);
+    expect(tester.getRect(find.byType(OverviewPage)).height, greaterThan(0));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    for (final label in ['概览', '模型', 'API 密钥', '请求日志', '设置']) {
+      expect(find.text(label), findsAtLeastNWidgets(1));
+    }
+
+    preferences.complete(SharedPreferences.getMockInitialValues({}));
+    await tester.pumpAndSettle();
+    expect(state.isLoaded, isTrue);
+  });
+
   testWidgets('renders overview and mobile page navigation', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final state = HubState()..isLoaded = true;
+    SharedPreferences.setMockInitialValues({});
+    final state = HubState();
     await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
     await tester.pumpAndSettle();
     expect(find.byType(OverviewPage), findsOneWidget);
