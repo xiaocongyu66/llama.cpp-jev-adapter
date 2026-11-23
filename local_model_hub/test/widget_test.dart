@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show Size;
 
-import 'package:flutter/material.dart' as material;
+import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
@@ -57,7 +57,7 @@ void main() {
     expect(find.byType(ActivityPage), findsOneWidget);
 
     await tester.pumpWidget(const material.SizedBox.shrink());
-    expect(state.hasListeners, isTrue);
+    expect(state.isLoaded, isTrue);
   });
 
   test('persists key configuration without losing usage totals', () {
