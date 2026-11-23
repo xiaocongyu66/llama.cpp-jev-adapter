@@ -147,18 +147,14 @@ class HubState extends material.ChangeNotifier {
         for (final key in keys) {
           key.requestTimes.removeWhere((time) => DateTime.now().difference(time) >= const Duration(minutes: 1));
         }
-      } catch (error) {
-        lastError = 'API 密钥恢复失败：$error';
-      }
+      } catch (_) {}
       final savedLogs = prefs.getString('requestLogs');
       if (savedLogs != null) {
         try {
           for (final item in (jsonDecode(savedLogs) as List).cast<Map<String, Object?>>()) {
             logs.add(GatewayLog.fromJson(item));
           }
-        } catch (error) {
-          lastError = '请求日志恢复失败：$error';
-        }
+        } catch (_) {}
       }
       if (Platform.isAndroid) {
         _engineSubscription ??= _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
@@ -582,28 +578,6 @@ class _PageFrame extends material.StatelessWidget {
         ),
         if (!HubScope.of(context).isLoaded) ...[
           const material.LinearProgressIndicator(),
-          const material.SizedBox(height: 16),
-        ],
-        if (HubScope.of(context).lastError != null) ...[
-          material.Card(
-            color: material.Theme.of(context).colorScheme.errorContainer,
-            child: material.Padding(
-              padding: const material.EdgeInsets.all(14),
-              child: material.Row(crossAxisAlignment: material.CrossAxisAlignment.start, children: [
-                material.Icon(material.Icons.error_outline, color: material.Theme.of(context).colorScheme.onErrorContainer),
-                const material.SizedBox(width: 10),
-                material.Expanded(child: material.Text(HubScope.of(context).lastError!)),
-                material.IconButton(
-                  tooltip: '关闭',
-                  onPressed: () {
-                    HubScope.of(context).lastError = null;
-                    HubScope.of(context).changed();
-                  },
-                  icon: const material.Icon(material.Icons.close),
-                ),
-              ]),
-            ),
-          ),
           const material.SizedBox(height: 16),
         ],
         const material.SizedBox(height: 24),

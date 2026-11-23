@@ -32,7 +32,9 @@ void main() {
     }
 
     preferences.complete(mockPreferences);
-    await tester.pumpAndSettle();
+    for (var attempt = 0; attempt < 20 && !state.isLoaded; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     expect(state.isLoaded, isTrue);
   });
 
@@ -44,16 +46,16 @@ void main() {
 
     final state = HubState();
     await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(OverviewPage), findsOneWidget);
 
     await tester.tap(find.text('模型').last);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ModelsPage), findsOneWidget);
     expect(find.text('模型'), findsAtLeastNWidgets(1));
 
     await tester.tap(find.text('请求日志').last);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ActivityPage), findsOneWidget);
 
     await tester.pumpWidget(const material.SizedBox.shrink());
