@@ -170,37 +170,39 @@ class HubState extends material.ChangeNotifier {
     final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);
     final name = p.basename(sourcePath);
+    final existing = models.where((model) => p.basename(model.path) == name);
+    if (existing.isNotEmpty) {
+      selectedModel = existing.first;
+      notifyListeners();
+      return;
+    }
     final destination = await _availableModelPath(modelDirectory, name);
-    if (destination == null) return;
     final file = await source.copy(destination);
     await _registerModel(file);
   }
 
-  Future<void> addModelStream(String name, Stream<List<int>> stream) async {
+  Future<void> addModelBytes(String name, List<int> bytes) async {
     if (!name.toLowerCase().endsWith('.gguf')) {
       throw const FormatException('请选择 GGUF 文件');
     }
+    if (bytes.isEmpty) throw const FormatException('所选模型文件为空');
     final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);
-    final destination = await _availableModelPath(modelDirectory, p.basename(name));
-    if (destination == null) return;
-    final file = File('$destination.importing');
-    try {
-      await file.openWrite().addStream(stream);
-      if (await file.length() == 0) throw const FormatException('所选模型文件为空');
-      final imported = await file.rename(destination);
-      await _registerModel(imported);
-    } catch (_) {
-      if (await file.exists()) await file.delete();
-      rethrow;
+    final existing = models.where((model) => p.basename(model.path) == p.basename(name));
+    if (existing.isNotEmpty) {
+      selectedModel = existing.first;
+      notifyListeners();
+      return;
     }
+    final destination = await _availableModelPath(modelDirectory, p.basename(name));
+    final file = await File(destination).writeAsBytes(bytes, flush: true);
+    await _registerModel(file);
   }
 
-  Future<String?> _availableModelPath(Directory directory, String name) async {
+  Future<String> _availableModelPath(Directory directory, String name) async {
     var destination = p.join(directory.path, name);
     var suffix = 1;
     while (await File(destination).exists()) {
-      if (models.any((model) => model.path == destination)) return null;
       destination = p.join(directory.path, '${p.basenameWithoutExtension(name)}-$suffix.gguf');
       suffix++;
     }
@@ -618,17 +620,18 @@ Future<void> _pickModel(material.BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['gguf'],
-      withReadStream: true,
+      withData: true,
     );
     if (!context.mounted || result == null) return;
     final selected = result.files.single;
     final state = HubScope.of(context);
-    if (selected.path != null && !selected.path!.startsWith('content://')) {
-      await state.addModel(selected.path!);
-    } else if (selected.readStream != null) {
-      await state.addModelStream(selected.name, selected.readStream!);
+    final path = selected.path;
+    if (path != null && !path.startsWith('content://')) {
+      await state.addModel(path);
+    } else if (selected.bytes != null) {
+      await state.addModelBytes(selected.name, selected.bytes!);
     } else {
-      throw const FileSystemException('Android 无法读取所选文件，请重新选择 GGUF 文件');
+      throw const FileSystemException('无法读取所选模型文件');
     }
     if (context.mounted) _showMessage(context, '已导入 ${selected.name}');
   } catch (error) {

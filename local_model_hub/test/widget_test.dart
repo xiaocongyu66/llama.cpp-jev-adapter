@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:material_ui/material_ui.dart' as material;
@@ -56,6 +57,33 @@ void main() {
     expect(find.byType(ActivityPage), findsOneWidget);
 
     await tester.pumpWidget(const material.SizedBox.shrink());
+  });
+
+  test('copies and registers an imported GGUF model', () async {
+    final directory = await Directory.systemTemp.createTemp('model-import-test-');
+    addTearDown(() => directory.delete(recursive: true));
+    final source = File('${directory.path}/source.gguf');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final state = HubState(modelDirectoryProvider: () async => Directory('${directory.path}/models'));
+
+    await state.addModel(source.path);
+
+    expect(state.models, hasLength(1));
+    expect(state.models.single.name, 'source.gguf');
+    expect(await File(state.models.single.path).readAsBytes(), [1, 2, 3, 4]);
+    expect(mockPreferences.getStringList('models'), [state.models.single.path]);
+  });
+
+  test('writes picker bytes into the model library', () async {
+    final directory = await Directory.systemTemp.createTemp('model-bytes-import-test-');
+    addTearDown(() => directory.delete(recursive: true));
+    final state = HubState(modelDirectoryProvider: () async => Directory('${directory.path}/models'));
+
+    await state.addModelBytes('picked.gguf', [4, 3, 2, 1]);
+
+    expect(state.models, hasLength(1));
+    expect(await File(state.models.single.path).readAsBytes(), [4, 3, 2, 1]);
+    expect(mockPreferences.getStringList('models'), [state.models.single.path]);
   });
 
   test('persists key configuration without losing usage totals', () {
