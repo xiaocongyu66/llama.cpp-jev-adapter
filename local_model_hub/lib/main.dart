@@ -138,9 +138,7 @@ class HubState extends material.ChangeNotifier {
       selectedModel = models.isEmpty ? null : models.first;
 
       try {
-        final storedKeys = await const FlutterSecureStorage()
-            .read(key: 'apiKeys')
-            .timeout(const Duration(seconds: 5));
+        final storedKeys = await const FlutterSecureStorage().read(key: 'apiKeys');
         if (storedKeys != null) {
           for (final item in (jsonDecode(storedKeys) as List).cast<Map<String, Object?>>()) {
             keys.add(GatewayKey.fromJson(item));
@@ -149,22 +147,22 @@ class HubState extends material.ChangeNotifier {
         for (final key in keys) {
           key.requestTimes.removeWhere((time) => DateTime.now().difference(time) >= const Duration(minutes: 1));
         }
-        final savedLogs = prefs.getString('requestLogs');
-        if (savedLogs != null) {
+      } catch (error) {
+        lastError = 'API 密钥恢复失败：$error';
+      }
+      final savedLogs = prefs.getString('requestLogs');
+      if (savedLogs != null) {
+        try {
           for (final item in (jsonDecode(savedLogs) as List).cast<Map<String, Object?>>()) {
             logs.add(GatewayLog.fromJson(item));
           }
+        } catch (error) {
+          lastError = '请求日志恢复失败：$error';
         }
-        if (Platform.isAndroid) {
-          _engineSubscription = _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
-          engineRunning = await _engineChannel
-                  .invokeMethod<bool>('isRunning')
-                  .timeout(const Duration(seconds: 5)) ??
-              false;
-          if (engineRunning) gateway.setExternalEngine(18081);
-        }
-      } catch (error) {
-        lastError = '部分本地状态恢复失败：$error';
+      }
+      if (Platform.isAndroid) {
+        _engineSubscription ??= _engineEvents.receiveBroadcastStream().listen(_onEngineEvent, onError: _onEngineEventError);
+        gateway.setExternalEngine(18081);
       }
     } catch (error) {
       lastError = '本地设置读取失败：$error';
@@ -175,22 +173,54 @@ class HubState extends material.ChangeNotifier {
   }
 
   Future<void> addModel(String sourcePath) async {
-    final source = File(sourcePath);
-    if (!await source.exists() || !sourcePath.toLowerCase().endsWith('.gguf')) {
-      throw const FormatException('请选择存在的 GGUF 文件');
+    if (!sourcePath.toLowerCase().endsWith('.gguf')) {
+      throw const FormatException('请选择 GGUF 文件');
     }
+    final source = File(sourcePath);
+    if (!await source.exists()) throw const FormatException('所选模型文件无法读取');
     final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);
     final name = p.basename(sourcePath);
-    var destination = p.join(modelDirectory.path, name);
+    final destination = await _availableModelPath(modelDirectory, name);
+    if (destination == null) return;
+    final file = await source.copy(destination);
+    await _registerModel(file);
+  }
+
+  Future<void> addModelStream(String name, Stream<List<int>> stream) async {
+    if (!name.toLowerCase().endsWith('.gguf')) {
+      throw const FormatException('请选择 GGUF 文件');
+    }
+    final modelDirectory = await _modelDirectoryProvider();
+    await modelDirectory.create(recursive: true);
+    final destination = await _availableModelPath(modelDirectory, p.basename(name));
+    if (destination == null) return;
+    final file = File('$destination.importing');
+    try {
+      await file.openWrite().addStream(stream);
+      if (await file.length() == 0) throw const FormatException('所选模型文件为空');
+      final imported = await file.rename(destination);
+      await _registerModel(imported);
+    } catch (_) {
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
+  }
+
+  Future<String?> _availableModelPath(Directory directory, String name) async {
+    var destination = p.join(directory.path, name);
     var suffix = 1;
     while (await File(destination).exists()) {
-      if (models.any((model) => model.path == destination)) return;
-      destination = p.join(modelDirectory.path, '${p.basenameWithoutExtension(name)}-$suffix.gguf');
+      if (models.any((model) => model.path == destination)) return null;
+      destination = p.join(directory.path, '${p.basenameWithoutExtension(name)}-$suffix.gguf');
       suffix++;
     }
-    final file = await source.copy(destination);
-    final model = LocalModel(name: p.basename(destination), path: destination, sizeLabel: _formatSize(await file.length()));
+    return destination;
+  }
+
+  Future<void> _registerModel(File file) async {
+    final model = LocalModel(name: p.basename(file.path), path: file.path, sizeLabel: _formatSize(await file.length()));
+    models.removeWhere((existing) => existing.path == model.path);
     models.add(model);
     selectedModel ??= model;
     await _saveModels();
@@ -617,13 +647,25 @@ class OverviewPage extends material.StatelessWidget {
 }
 
 Future<void> _pickModel(material.BuildContext context) async {
-  final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['gguf']);
-  final path = result?.files.single.path;
-  if (path == null || !context.mounted) return;
   try {
-    await HubScope.of(context).addModel(path);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['gguf'],
+      withReadStream: true,
+    );
+    if (!context.mounted || result == null) return;
+    final selected = result.files.single;
+    final state = HubScope.of(context);
+    if (selected.path != null && !selected.path!.startsWith('content://')) {
+      await state.addModel(selected.path!);
+    } else if (selected.readStream != null) {
+      await state.addModelStream(selected.name, selected.readStream!);
+    } else {
+      throw const FileSystemException('Android 无法读取所选文件，请重新选择 GGUF 文件');
+    }
+    if (context.mounted) _showMessage(context, '已导入 ${selected.name}');
   } catch (error) {
-    if (context.mounted) _showMessage(context, error.toString());
+    if (context.mounted) _showMessage(context, '导入失败：$error');
   }
 }
 
