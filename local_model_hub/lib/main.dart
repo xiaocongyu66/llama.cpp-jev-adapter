@@ -120,14 +120,7 @@ class HubState extends material.ChangeNotifier {
     lastError = null;
     notifyListeners();
     try {
-      final preferencesFuture = _preferencesProvider();
-      final prefs = await Future.any<SharedPreferences>([
-        preferencesFuture,
-        Future<SharedPreferences>.delayed(
-          const Duration(seconds: 5),
-          () => throw TimeoutException('Preferences loading timed out'),
-        ),
-      ]);
+      final prefs = await _preferencesProvider();
       final savedModels = prefs.getStringList('models') ?? [];
       for (final path in savedModels) {
         final file = File(path);
@@ -219,8 +212,8 @@ class HubState extends material.ChangeNotifier {
     models.removeWhere((existing) => existing.path == model.path);
     models.add(model);
     selectedModel ??= model;
-    await _saveModels();
     notifyListeners();
+    await _saveModels();
   }
 
   Future<void> removeModel(LocalModel model) async {
