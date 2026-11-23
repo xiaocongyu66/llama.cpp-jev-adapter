@@ -215,7 +215,12 @@ class HubState extends material.ChangeNotifier {
     models.add(model);
     selectedModel ??= model;
     notifyListeners();
-    await _saveModels();
+    try {
+      await _saveModels();
+    } catch (error) {
+      lastError = '模型已导入，但保存模型列表失败：$error';
+      notifyListeners();
+    }
   }
 
   Future<void> removeModel(LocalModel model) async {
