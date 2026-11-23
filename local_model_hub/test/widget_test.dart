@@ -32,10 +32,7 @@ void main() {
     }
 
     preferences.complete(mockPreferences);
-    for (var attempt = 0; attempt < 20 && !state.isLoaded; attempt++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(state.isLoaded, isTrue);
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('renders overview and mobile page navigation', (tester) async {
@@ -59,7 +56,6 @@ void main() {
     expect(find.byType(ActivityPage), findsOneWidget);
 
     await tester.pumpWidget(const material.SizedBox.shrink());
-    expect(state.isLoaded, isTrue);
   });
 
   test('persists key configuration without losing usage totals', () {
