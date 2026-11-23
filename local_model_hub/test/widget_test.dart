@@ -1,12 +1,19 @@
 import 'dart:async';
 import 'dart:ui' show Size;
 
+import 'package:flutter/material.dart' as material;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_model_hub/api_gateway.dart';
 import 'package:local_model_hub/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  late SharedPreferences mockPreferences;
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    mockPreferences = await SharedPreferences.getInstance();
+  });
+
   testWidgets('renders the page before loading saved preferences', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
@@ -19,12 +26,12 @@ void main() {
 
     expect(find.byType(OverviewPage), findsOneWidget);
     expect(tester.getRect(find.byType(OverviewPage)).height, greaterThan(0));
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(material.LinearProgressIndicator), findsOneWidget);
     for (final label in ['概览', '模型', 'API 密钥', '请求日志', '设置']) {
       expect(find.text(label), findsAtLeastNWidgets(1));
     }
 
-    preferences.complete(SharedPreferences.getMockInitialValues({}));
+    preferences.complete(mockPreferences);
     await tester.pumpAndSettle();
     expect(state.isLoaded, isTrue);
   });
@@ -35,7 +42,6 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    SharedPreferences.setMockInitialValues({});
     final state = HubState();
     await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
     await tester.pumpAndSettle();
@@ -49,6 +55,9 @@ void main() {
     await tester.tap(find.text('请求日志').last);
     await tester.pumpAndSettle();
     expect(find.byType(ActivityPage), findsOneWidget);
+
+    await tester.pumpWidget(const material.SizedBox.shrink());
+    expect(state.hasListeners, isTrue);
   });
 
   test('persists key configuration without losing usage totals', () {
