@@ -166,7 +166,10 @@ class HubState extends material.ChangeNotifier {
       throw const FormatException('请选择 GGUF 文件');
     }
     final source = File(sourcePath);
-    if (!await source.exists()) throw const FormatException('所选模型文件无法读取');
+    final sourceStat = await source.stat();
+    if (sourceStat.type != FileSystemEntityType.file) {
+      throw const FileSystemException('选择器返回的模型路径不是普通文件', sourcePath);
+    }
     final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);
     final name = p.basename(sourcePath);
@@ -178,24 +181,11 @@ class HubState extends material.ChangeNotifier {
     }
     final destination = await _availableModelPath(modelDirectory, name);
     final file = await source.copy(destination);
-    await _registerModel(file);
-  }
-
-  Future<void> addModelBytes(String name, List<int> bytes) async {
-    if (!name.toLowerCase().endsWith('.gguf')) {
-      throw const FormatException('请选择 GGUF 文件');
+    final copiedLength = await file.length();
+    if (copiedLength != sourceStat.size) {
+      await file.delete();
+      throw FileSystemException('模型复制不完整：源文件 ${sourceStat.size} 字节，目标文件 $copiedLength 字节', destination);
     }
-    if (bytes.isEmpty) throw const FormatException('所选模型文件为空');
-    final modelDirectory = await _modelDirectoryProvider();
-    await modelDirectory.create(recursive: true);
-    final existing = models.where((model) => p.basename(model.path) == p.basename(name));
-    if (existing.isNotEmpty) {
-      selectedModel = existing.first;
-      notifyListeners();
-      return;
-    }
-    final destination = await _availableModelPath(modelDirectory, p.basename(name));
-    final file = await File(destination).writeAsBytes(bytes, flush: true);
     await _registerModel(file);
   }
 
@@ -625,7 +615,6 @@ Future<void> _pickModel(material.BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['gguf'],
-      withData: true,
     );
     if (!context.mounted || result == null) return;
     final selected = result.files.single;
@@ -633,10 +622,8 @@ Future<void> _pickModel(material.BuildContext context) async {
     final path = selected.path;
     if (path != null && !path.startsWith('content://')) {
       await state.addModel(path);
-    } else if (selected.bytes != null) {
-      await state.addModelBytes(selected.name, selected.bytes!);
     } else {
-      throw const FileSystemException('无法读取所选模型文件');
+      throw const FileSystemException('文件选择器没有提供可访问的本地文件路径；请检查 Android 文件选择器返回值');
     }
     if (context.mounted) _showMessage(context, '已导入 ${selected.name}');
   } catch (error) {
