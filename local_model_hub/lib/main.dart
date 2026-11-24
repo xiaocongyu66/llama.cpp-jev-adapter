@@ -168,7 +168,7 @@ class HubState extends material.ChangeNotifier {
     final source = File(sourcePath);
     final sourceStat = await source.stat();
     if (sourceStat.type != FileSystemEntityType.file) {
-      throw const FileSystemException('选择器返回的模型路径不是普通文件', sourcePath);
+      throw FileSystemException('选择器返回的模型路径不是普通文件', sourcePath);
     }
     final modelDirectory = await _modelDirectoryProvider();
     await modelDirectory.create(recursive: true);

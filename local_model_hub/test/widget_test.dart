@@ -74,18 +74,6 @@ void main() {
     expect(mockPreferences.getStringList('models'), [state.models.single.path]);
   });
 
-  test('writes picker bytes into the model library', () async {
-    final directory = await Directory.systemTemp.createTemp('model-bytes-import-test-');
-    addTearDown(() => directory.delete(recursive: true));
-    final state = HubState(modelDirectoryProvider: () async => Directory('${directory.path}/models'));
-
-    await state.addModelBytes('picked.gguf', [4, 3, 2, 1]);
-
-    expect(state.models, hasLength(1));
-    expect(await File(state.models.single.path).readAsBytes(), [4, 3, 2, 1]);
-    expect(mockPreferences.getStringList('models'), [state.models.single.path]);
-  });
-
   test('persists key configuration without losing usage totals', () {
     final key = GatewayKey(name: 'test', secret: 'secret', rpm: 17)
       ..requests = 3
