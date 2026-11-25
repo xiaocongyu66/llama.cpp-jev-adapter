@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.IBinder
 import android.system.Os
 import androidx.core.app.NotificationCompat
@@ -27,6 +29,7 @@ sealed interface EngineState {
 
 class LlamaEngineService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var process: Process? = null
     private var logThread: Thread? = null
 
@@ -70,7 +73,7 @@ class LlamaEngineService : Service() {
                     .start()
                 process = running
                 publish(EngineState.Running(modelPath, port))
-                mainExecutor.execute { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("llama-server 运行中")) }
+                mainHandler.post { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("llama-server 运行中")) }
                 logThread = Thread {
                     running.inputStream.bufferedReader().useLines { lines ->
                         lines.forEach { message -> android.util.Log.i(TAG, message) }
@@ -81,7 +84,7 @@ class LlamaEngineService : Service() {
                     if (process === running) {
                         process = null
                         publish(EngineState.Failed("llama-server 已退出，exit code=$exitCode"))
-                        mainExecutor.execute {
+                        mainHandler.post {
                             stopForeground(STOP_FOREGROUND_REMOVE)
                             stopSelf()
                         }
@@ -89,7 +92,7 @@ class LlamaEngineService : Service() {
                 }.start()
             } catch (error: Exception) {
                 publish(EngineState.Failed(error.message ?: error.toString()))
-                mainExecutor.execute {
+                mainHandler.post {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
