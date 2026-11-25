@@ -76,18 +76,13 @@ void main() {
     expect(mockPreferences.getStringList('models'), [modelFile.path]);
   });
 
-  testWidgets('shows models discovered on disk in the model list', (tester) async {
+  testWidgets('shows discovered models and scan path in the model list', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final directory = await Directory.systemTemp.createTemp('model-list-ui-test-');
-    addTearDown(() => directory.delete(recursive: true));
-    final modelDirectory = Directory('${directory.path}/models');
-    await modelDirectory.create();
-    final modelFile = File('${modelDirectory.path}/visible.gguf');
-    await modelFile.writeAsBytes([1, 2, 3]);
-    final state = HubState(modelDirectoryProvider: () async => modelDirectory);
+    final state = HubState()..modelDirectoryPath = '/models';
+    state.models.add(LocalModel(name: 'visible.gguf', path: '/models/visible.gguf', sizeLabel: '1 KB'));
 
     await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
     await tester.pump(const Duration(milliseconds: 300));
@@ -96,7 +91,7 @@ void main() {
 
     expect(find.text('visible.gguf'), findsOneWidget);
     expect(find.text('识别到 1 个模型'), findsOneWidget);
-    expect(find.text(modelDirectory.path), findsOneWidget);
+    expect(find.text('/models'), findsOneWidget);
   });
 
   test('copies and registers an imported GGUF model', () async {
