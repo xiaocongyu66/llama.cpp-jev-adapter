@@ -610,7 +610,11 @@ class OverviewPage extends material.StatelessWidget {
   }
 }
 
+bool _modelPickerActive = false;
+
 Future<void> _pickModel(material.BuildContext context) async {
+  if (_modelPickerActive) return;
+  _modelPickerActive = true;
   try {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -620,14 +624,15 @@ Future<void> _pickModel(material.BuildContext context) async {
     final selected = result.files.single;
     final state = HubScope.of(context);
     final path = selected.path;
-    if (path != null && !path.startsWith('content://')) {
-      await state.addModel(path);
-    } else {
-      throw const FileSystemException('文件选择器没有提供可访问的本地文件路径；请检查 Android 文件选择器返回值');
+    if (path == null || path.startsWith('content://')) {
+      throw const FileSystemException('文件选择器没有提供可访问的本地文件路径');
     }
+    await state.addModel(path);
     if (context.mounted) _showMessage(context, '已导入 ${selected.name}');
   } catch (error) {
     if (context.mounted) _showMessage(context, '导入失败：$error');
+  } finally {
+    _modelPickerActive = false;
   }
 }
 
