@@ -6,11 +6,11 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsBytes
-import io.ktor.client.statement.contentType
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headers
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
@@ -129,7 +129,7 @@ class ApiGateway(
                         }
                         val responseBytes = upstreamResponse.bodyAsBytes()
                         call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
-                        call.respondBytes(responseBytes, upstreamResponse.contentType() ?: ContentType.Application.Json, status = upstreamResponse.status)
+                        call.respondBytes(responseBytes, upstreamResponse.headers[HttpHeaders.ContentType]?.let(ContentType::parse) ?: ContentType.Application.Json, status = upstreamResponse.status)
                         val usage = runCatching {
                             val root = json.parseToJsonElement(responseBytes.decodeToString()).jsonObject
                             val value = root["usage"]!!.jsonObject
