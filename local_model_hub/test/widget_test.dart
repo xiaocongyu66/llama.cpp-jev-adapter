@@ -59,6 +59,22 @@ void main() {
     await tester.pumpWidget(const material.SizedBox.shrink());
   });
 
+  test('discovers GGUF files already present in the model directory', () async {
+    final directory = await Directory.systemTemp.createTemp('model-directory-scan-test-');
+    addTearDown(() => directory.delete(recursive: true));
+    final modelDirectory = Directory('${directory.path}/models');
+    await modelDirectory.create();
+    final modelFile = File('${modelDirectory.path}/recovered.gguf');
+    await modelFile.writeAsBytes([5, 6, 7]);
+    final state = HubState(modelDirectoryProvider: () async => modelDirectory);
+
+    await state.load();
+
+    expect(state.models, hasLength(1));
+    expect(state.models.single.path, modelFile.path);
+    expect(mockPreferences.getStringList('models'), [modelFile.path]);
+  });
+
   test('copies and registers an imported GGUF model', () async {
     final directory = await Directory.systemTemp.createTemp('model-import-test-');
     addTearDown(() => directory.delete(recursive: true));

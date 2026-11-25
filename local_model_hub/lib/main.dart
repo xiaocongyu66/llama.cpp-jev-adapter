@@ -105,6 +105,7 @@ class HubState extends material.ChangeNotifier {
   String? enginePath;
   String? backendArgs;
   String? lastError;
+  String? importingModelName;
 
   void _onGatewayLog(GatewayLog log) {
     logs.insert(0, log);
@@ -122,9 +123,24 @@ class HubState extends material.ChangeNotifier {
     try {
       final prefs = await _preferencesProvider();
       final savedModels = prefs.getStringList('models') ?? [];
+      final modelDirectory = await _modelDirectoryProvider();
+      await modelDirectory.create(recursive: true);
+      final modelPaths = <String>{};
       for (final path in savedModels) {
+        if (await File(path).exists()) modelPaths.add(path);
+      }
+      await for (final entity in modelDirectory.list(followLinks: false)) {
+        if (entity is File && p.extension(entity.path).toLowerCase() == '.gguf') {
+          modelPaths.add(entity.path);
+        }
+      }
+      for (final path in modelPaths) {
         final file = File(path);
-        if (await file.exists()) models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
+        models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
+      }
+      selectedModel = models.isEmpty ? null : models.first;
+      if (modelPaths.length != savedModels.length || !modelPaths.containsAll(savedModels)) {
+        await prefs.setStringList('models', models.map((model) => model.path).toList());
       }
       enginePath = prefs.getString('llamaServerPath');
       backendArgs = prefs.getString('backendArgs') ?? '--n-gpu-layers auto';
@@ -180,13 +196,20 @@ class HubState extends material.ChangeNotifier {
       return;
     }
     final destination = await _availableModelPath(modelDirectory, name);
-    final file = await source.copy(destination);
-    final copiedLength = await file.length();
-    if (copiedLength != sourceStat.size) {
-      await file.delete();
-      throw FileSystemException('模型复制不完整：源文件 ${sourceStat.size} 字节，目标文件 $copiedLength 字节', destination);
+    importingModelName = name;
+    notifyListeners();
+    try {
+      final file = await source.copy(destination);
+      final copiedLength = await file.length();
+      if (copiedLength != sourceStat.size) {
+        await file.delete();
+        throw FileSystemException('模型复制不完整：源文件 ${sourceStat.size} 字节，目标文件 $copiedLength 字节', destination);
+      }
+      await _registerModel(file);
+    } finally {
+      importingModelName = null;
+      notifyListeners();
     }
-    await _registerModel(file);
   }
 
   Future<String> _availableModelPath(Directory directory, String name) async {
@@ -429,15 +452,31 @@ class _HubShellState extends material.State<HubShell> {
     return HubScope(
       state: state,
       child: material.Scaffold(
-        body: material.Row(
+        body: material.Column(
           children: [
-            if (wide) _Rail(selected: page, onSelected: _select),
-            material.Expanded(
-              child: material.SafeArea(
-                child: widgets.AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: _pageContent(),
+            if (state.importingModelName case final name?) ...[
+              const material.LinearProgressIndicator(),
+              material.Padding(
+                padding: const material.EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: material.Align(
+                  alignment: widgets.Alignment.centerLeft,
+                  child: material.Text('正在导入 $name…'),
                 ),
+              ),
+            ],
+            material.Expanded(
+              child: material.Row(
+                children: [
+                  if (wide) _Rail(selected: page, onSelected: _select),
+                  material.Expanded(
+                    child: material.SafeArea(
+                      child: widgets.AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: _pageContent(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
