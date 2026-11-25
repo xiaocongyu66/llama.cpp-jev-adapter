@@ -12,7 +12,7 @@ ktor = "3.3.3"
 kotlinx-serialization = "1.9.0"
 room = "2.8.4"
 androidx-security = "1.1.0-alpha06"
-kotlinx-datetime = "0.7.1"
+kotlinx-datetime = "0.6.2"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
