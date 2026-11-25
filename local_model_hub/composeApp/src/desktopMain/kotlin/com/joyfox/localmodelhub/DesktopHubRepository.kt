@@ -8,6 +8,7 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
@@ -42,6 +43,7 @@ class DesktopHubRepository : HubRepository {
     }
 
     override suspend fun navigate(route: HubRoute) { mutableState.value = mutableState.value.copy(route = route) }
+    override suspend fun beginImport() { mutableState.value = mutableState.value.copy(importingName = "正在选择模型…", message = null) }
 
     override suspend fun importModel(displayName: String, source: ModelSource) = withContext(Dispatchers.IO) {
         modelDirectory.mkdirs()
@@ -81,9 +83,25 @@ class DesktopHubRepository : HubRepository {
         check(executable.isNotBlank()) { "请先在设置中指定 llama-server 可执行文件" }
         val command = listOf(executable, "--model", model.path, "--host", "127.0.0.1", "--port", "8081") + splitArgs(preferences.get(BACKEND_ARGS_KEY, "--n-gpu-layers auto"))
         try {
-            process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val running = ProcessBuilder(command).redirectErrorStream(true).start()
+            process = running
+            var ready = false
+            repeat(120) {
+                if (!ready && running.isAlive) {
+                    ready = runCatching {
+                        val connection = java.net.URL("http://127.0.0.1:8081/health").openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 1000
+                        connection.readTimeout = 1000
+                        try { connection.responseCode in 200..299 } finally { connection.disconnect() }
+                    }.getOrDefault(false)
+                    if (!ready) delay(500)
+                }
+            }
+            check(ready) { "llama-server 在 60 秒内未就绪" }
             mutableState.value = mutableState.value.copy(enginePhase = EnginePhase.RUNNING, models = mutableState.value.models.map { it.copy(loaded = it.id == modelId) })
         } catch (error: Exception) {
+            process?.destroyForcibly()
+            process = null
             mutableState.value = mutableState.value.copy(enginePhase = EnginePhase.FAILED, message = error.message)
         }
     }

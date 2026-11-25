@@ -7,6 +7,7 @@ interface HubRepository {
 
     suspend fun refresh()
     suspend fun navigate(route: HubRoute)
+    suspend fun beginImport()
     suspend fun importModel(displayName: String, source: ModelSource)
     suspend fun clearImport()
     suspend fun removeModel(modelId: String)

@@ -16,6 +16,8 @@ class HubViewModel(private val repository: HubRepository) {
 
     fun navigate(route: HubRoute) = scope.launch { repository.navigate(route) }
 
+    fun beginImport() = scope.launch { repository.beginImport() }
+
     fun importModel(name: String, source: ModelSource) = scope.launch {
         repository.importModel(name, source)
     }
