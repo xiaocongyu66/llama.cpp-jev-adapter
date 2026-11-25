@@ -47,8 +47,10 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.compose.ui.tooling)
         }
-        desktopMain.dependencies {
-            implementation(compose.desktop.currentOs)
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+            }
         }
     }
 }
