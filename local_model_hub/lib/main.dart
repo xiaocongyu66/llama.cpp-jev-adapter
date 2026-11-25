@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, listEquals;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' as widgets;
 
@@ -106,6 +106,7 @@ class HubState extends material.ChangeNotifier {
   String? backendArgs;
   String? lastError;
   String? importingModelName;
+  String? modelDirectoryPath;
 
   void _onGatewayLog(GatewayLog log) {
     logs.insert(0, log);
@@ -124,12 +125,13 @@ class HubState extends material.ChangeNotifier {
       final prefs = await _preferencesProvider();
       final savedModels = prefs.getStringList('models') ?? [];
       final modelDirectory = await _modelDirectoryProvider();
+      modelDirectoryPath = modelDirectory.path;
       await modelDirectory.create(recursive: true);
       final modelPaths = <String>{};
       for (final path in savedModels) {
         if (await File(path).exists()) modelPaths.add(path);
       }
-      await for (final entity in modelDirectory.list(followLinks: false)) {
+      await for (final entity in modelDirectory.list(recursive: true, followLinks: false)) {
         if (entity is File && p.extension(entity.path).toLowerCase() == '.gguf') {
           modelPaths.add(entity.path);
         }
@@ -139,8 +141,10 @@ class HubState extends material.ChangeNotifier {
         models.add(LocalModel(name: p.basename(path), path: path, sizeLabel: _formatSize(await file.length())));
       }
       selectedModel = models.isEmpty ? null : models.first;
-      if (modelPaths.length != savedModels.length || !modelPaths.containsAll(savedModels)) {
-        await prefs.setStringList('models', models.map((model) => model.path).toList());
+      final discoveredPaths = models.map((model) => model.path).toList()..sort();
+      final indexedPaths = savedModels.toSet().toList()..sort();
+      if (discoveredPaths.length != savedModels.length || !listEquals(discoveredPaths, indexedPaths)) {
+        await prefs.setStringList('models', discoveredPaths);
       }
       enginePath = prefs.getString('llamaServerPath');
       backendArgs = prefs.getString('backendArgs') ?? '--n-gpu-layers auto';
@@ -841,8 +845,16 @@ class ModelsPage extends material.StatelessWidget {
       subtitle: '导入、管理并启动本地模型',
       action: material.FilledButton.icon(onPressed: () => _pickModel(context), icon: const material.Icon(material.Icons.add), label: const material.Text('导入')),
       children: [
+        material.Card(
+          child: material.ListTile(
+            leading: const material.Icon(material.Icons.folder_open),
+            title: material.Text('识别到 ${state.models.length} 个模型'),
+            subtitle: material.SelectableText(state.modelDirectoryPath ?? '正在读取模型目录…'),
+          ),
+        ),
+        const material.SizedBox(height: 12),
         if (state.models.isEmpty)
-          const _EmptyState(icon: material.Icons.folder_open, title: '模型库为空', body: '选择 GGUF 文件导入到本地模型库。模型文件保留在设备上。')
+          const _EmptyState(icon: material.Icons.folder_open, title: '模型列表为空', body: '上方显示应用当前扫描的目录。请核对模型文件是否位于该目录或其子目录。')
         else
           for (final model in state.models) _ModelTile(model: model),
         const material.SizedBox(height: 18),

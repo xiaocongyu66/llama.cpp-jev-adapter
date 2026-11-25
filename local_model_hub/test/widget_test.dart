@@ -63,8 +63,9 @@ void main() {
     final directory = await Directory.systemTemp.createTemp('model-directory-scan-test-');
     addTearDown(() => directory.delete(recursive: true));
     final modelDirectory = Directory('${directory.path}/models');
-    await modelDirectory.create();
-    final modelFile = File('${modelDirectory.path}/recovered.gguf');
+    final nestedDirectory = Directory('${modelDirectory.path}/nested');
+    await nestedDirectory.create(recursive: true);
+    final modelFile = File('${nestedDirectory.path}/recovered.gguf');
     await modelFile.writeAsBytes([5, 6, 7]);
     final state = HubState(modelDirectoryProvider: () async => modelDirectory);
 
@@ -73,6 +74,29 @@ void main() {
     expect(state.models, hasLength(1));
     expect(state.models.single.path, modelFile.path);
     expect(mockPreferences.getStringList('models'), [modelFile.path]);
+  });
+
+  testWidgets('shows models discovered on disk in the model list', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final directory = await Directory.systemTemp.createTemp('model-list-ui-test-');
+    addTearDown(() => directory.delete(recursive: true));
+    final modelDirectory = Directory('${directory.path}/models');
+    await modelDirectory.create();
+    final modelFile = File('${modelDirectory.path}/visible.gguf');
+    await modelFile.writeAsBytes([1, 2, 3]);
+    final state = HubState(modelDirectoryProvider: () async => modelDirectory);
+
+    await tester.pumpWidget(ModelHubApp(home: HubShell(state: state)));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('模型').last);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('visible.gguf'), findsOneWidget);
+    expect(find.text('识别到 1 个模型'), findsOneWidget);
+    expect(find.text(modelDirectory.path), findsOneWidget);
   });
 
   test('copies and registers an imported GGUF model', () async {
