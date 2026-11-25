@@ -64,25 +64,41 @@ class AndroidHubRepository(private val context: Context) : HubRepository {
         mutableState.value = mutableState.value.copy(route = route)
     }
 
+    override suspend fun beginImport() {
+        mutableState.value = mutableState.value.copy(importingName = "正在选择模型…", message = null)
+    }
+
     override suspend fun importModel(displayName: String, source: ModelSource) = withContext(Dispatchers.IO) {
-        val staging = File(modelDirectory, ".$displayName.${UUID.randomUUID()}.importing")
+        val safeName = displayName.substringAfterLast('/').substringAfterLast('\\')
         val total = source.sizeBytes
-        mutableState.value = mutableState.value.copy(importingName = displayName, message = null)
+        mutableState.value = mutableState.value.copy(importingName = safeName, message = null)
+        var staging: File? = null
         try {
-            modelDirectory.mkdirs()
-            source.copyTo(AndroidPlatformFile(staging), onBytesCopied = { copied ->
-                mutableState.value = mutableState.value.copy(message = "已复制 $copied / $total 字节")
-            })
-            if (staging.length() == 0L || (total >= 0L && staging.length() != total)) {
-                error("模型复制不完整：$total -> ${staging.length()} 字节")
+            check(safeName.endsWith(".gguf", ignoreCase = true)) {
+                "所选文件不是 GGUF 模型：$displayName"
             }
-            val destination = uniqueDestination(displayName)
-            check(staging.renameTo(destination)) { "无法将模型写入 ${destination.absolutePath}" }
+            check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
+                "无法创建模型目录：${modelDirectory.absolutePath}"
+            }
+            val stagingFile = File(modelDirectory, ".$safeName.${UUID.randomUUID()}.importing")
+            staging = stagingFile
+            source.copyTo(AndroidPlatformFile(stagingFile), onBytesCopied = { copied ->
+                mutableState.value = mutableState.value.copy(message = "已复制 $copied / ${if (total >= 0L) total else "未知"} 字节")
+            })
+            if (stagingFile.length() == 0L || (total >= 0L && stagingFile.length() != total)) {
+                error("模型复制不完整：$total -> ${stagingFile.length()} 字节")
+            }
+            val destination = uniqueDestination(safeName)
+            check(stagingFile.renameTo(destination)) { "无法将模型写入 ${destination.absolutePath}" }
+            staging = null
+            check(destination.isFile && destination.length() > 0L) {
+                "模型文件未写入目标目录：${destination.absolutePath}"
+            }
             refresh()
             mutableState.value = mutableState.value.copy(message = "已导入 ${destination.name}")
         } catch (error: Exception) {
-            staging.delete()
-            mutableState.value = mutableState.value.copy(message = "导入失败：${error.message}")
+            staging?.delete()
+            mutableState.value = mutableState.value.copy(message = "导入失败：${error.message ?: error.javaClass.simpleName}")
         } finally {
             mutableState.value = mutableState.value.copy(importingName = null)
         }
@@ -102,11 +118,34 @@ class AndroidHubRepository(private val context: Context) : HubRepository {
     override suspend fun startModel(modelId: String) = withContext(Dispatchers.IO) {
         val model = mutableState.value.models.firstOrNull { it.id == modelId } ?: return@withContext
         mutableState.value = mutableState.value.copy(enginePhase = EnginePhase.STARTING, message = null)
-        LlamaEngineService.start(context, model.path, preferences.getString(BACKEND_ARGS_KEY, "--n-gpu-layers auto") ?: "", 18081)
-        mutableState.value = mutableState.value.copy(
-            models = mutableState.value.models.map { it.copy(loaded = it.id == modelId) },
-            enginePhase = EnginePhase.RUNNING,
-        )
+        try {
+            LlamaEngineService.start(context, model.path, preferences.getString(BACKEND_ARGS_KEY, "--n-gpu-layers auto") ?: "", 18081)
+            var ready = false
+            repeat(120) {
+                if (!ready) {
+                    ready = runCatching {
+                        val connection = java.net.URL("http://127.0.0.1:18081/health").openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 1000
+                        connection.readTimeout = 1000
+                        connection.requestMethod = "GET"
+                        try {
+                            connection.responseCode in 200..299
+                        } finally {
+                            connection.disconnect()
+                        }
+                    }.getOrDefault(false)
+                    if (!ready) kotlinx.coroutines.delay(500)
+                }
+            }
+            check(ready) { "llama-server 在 60 秒内未就绪" }
+            mutableState.value = mutableState.value.copy(
+                models = mutableState.value.models.map { it.copy(loaded = it.id == modelId) },
+                enginePhase = EnginePhase.RUNNING,
+            )
+        } catch (error: Exception) {
+            LlamaEngineService.stop(context)
+            mutableState.value = mutableState.value.copy(enginePhase = EnginePhase.FAILED, message = "模型启动失败：${error.message}")
+        }
     }
 
     override suspend fun stopModel() = withContext(Dispatchers.IO) {
@@ -224,9 +263,16 @@ class AndroidHubRepository(private val context: Context) : HubRepository {
 
         fun modelSource(context: Context, uri: Uri, displayName: String): ModelSource {
             val resolver = context.contentResolver
-            val size = resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
-            } ?: -1L
+            val size = runCatching {
+                resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (cursor.moveToFirst() && sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                        cursor.getLong(sizeIndex).takeIf { it > 0L } ?: -1L
+                    } else {
+                        -1L
+                    }
+                } ?: -1L
+            }.getOrDefault(-1L)
             return object : ModelSource {
                 override val sizeBytes: Long = size
                 override suspend fun copyTo(destination: PlatformFile, onBytesCopied: (Long) -> Unit) = withContext(Dispatchers.IO) {
