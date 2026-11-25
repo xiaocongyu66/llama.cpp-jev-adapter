@@ -82,9 +82,9 @@ fun LocalModelHubApp(viewModel: HubViewModel, onImportModel: () -> Unit) {
                         models = state.models,
                         scanDirectory = state.modelDirectory,
                         onImport = onImportModel,
-                        onStart = { viewModel.startModel(it) },
+                        onStart = { viewModel.startModel(it.id) },
                         onStop = viewModel::stopModel,
-                        onRemove = { viewModel.removeModel(it) },
+                        onRemove = { viewModel.removeModel(it.id) },
                     )
                     HubRoute.Keys -> KeysScreen(
                         keys = state.keys,

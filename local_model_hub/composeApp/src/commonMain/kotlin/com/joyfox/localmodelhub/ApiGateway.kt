@@ -6,11 +6,11 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsBytes
+import io.ktor.client.statement.contentType
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
@@ -20,13 +20,14 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveChannel
-import io.ktor.server.response.contentType
 import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.options
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import io.ktor.utils.io.core.readBytes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -43,7 +44,7 @@ class ApiGateway(
     private val client = HttpClient(ClientCIO)
     private val mutex = Mutex()
     private var server: EmbeddedServer<*, *>? = null
-    private val rpmTimestamps = mutableMapOf<String, MutableList<Long>>()
+    private val rpmTimestamps = mutableMapOf<String, MutableList<kotlin.time.TimeMark>>()
     private val json = Json { ignoreUnknownKeys = true }
 
     val isRunning: Boolean get() = server != null
@@ -69,6 +70,14 @@ class ApiGateway(
         client.close()
     }
 
+    private fun admitRequest(key: String, rpm: Int): Boolean {
+        val timestamps = rpmTimestamps.getOrPut(key) { mutableListOf() }
+        timestamps.removeAll { it.elapsedNow() >= 60.seconds }
+        if (timestamps.size >= rpm.coerceAtLeast(1)) return false
+        timestamps += TimeSource.Monotonic.markNow()
+        return true
+    }
+
     private fun Application.gatewayRoutes() {
         routing {
             route("/{path...}") {
@@ -76,10 +85,10 @@ class ApiGateway(
                     call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
                     call.response.headers.append(HttpHeaders.AccessControlAllowMethods, "GET, POST, OPTIONS")
                     call.response.headers.append(HttpHeaders.AccessControlAllowHeaders, "Authorization, Content-Type")
-                    call.respondBytes(byteArrayOf(), HttpStatusCode.NoContent)
+                    call.respondBytes(byteArrayOf(), status = HttpStatusCode.NoContent)
                 }
                 handle {
-                    val started = System.currentTimeMillis()
+                    val timer = TimeSource.Monotonic.markNow()
                     val path = call.request.path()
                     val token = call.request.headers[HttpHeaders.Authorization]
                         ?.takeIf { it.startsWith("Bearer ") }
@@ -87,27 +96,24 @@ class ApiGateway(
                     val key = keys().firstOrNull { it.enabled && constantTimeEquals(it.secret, token) }
                     if (key == null) {
                         call.respondGatewayError(HttpStatusCode.Unauthorized, "Invalid API key")
-                        onRequest(RequestRecord(nowIso(), "未授权", path, 401, 0, 0, System.currentTimeMillis() - started), null)
+                        onRequest(RequestRecord(nowIso(), "未授权", path, 401, 0, 0, timer.elapsedNow().inWholeMilliseconds), null)
                         return@handle
                     }
-                    val now = started
-                    val recent = rpmTimestamps.getOrPut(key.name) { mutableListOf() }
-                    recent.removeAll { now - it >= 60_000 }
-                    if (recent.size >= key.rpm) {
+                    val admitted = mutex.withLock { admitRequest(key.name, key.rpm) }
+                    if (!admitted) {
                         call.respondGatewayError(HttpStatusCode.TooManyRequests, "Rate limit exceeded")
-                        onRequest(RequestRecord(nowIso(), key.name, path, 429, 0, 0, System.currentTimeMillis() - started), key)
+                        onRequest(RequestRecord(nowIso(), key.name, path, 429, 0, 0, timer.elapsedNow().inWholeMilliseconds), key)
                         return@handle
                     }
-                    recent += now
                     val running = engineRunning()
                     if (path == "/health") {
                         call.respondBytes("""{"status":"ok","engine":$running}""".encodeToByteArray(), ContentType.Application.Json)
-                        onRequest(RequestRecord(nowIso(), key.name, path, 200, 0, 0, System.currentTimeMillis() - started), key)
+                        onRequest(RequestRecord(nowIso(), key.name, path, 200, 0, 0, timer.elapsedNow().inWholeMilliseconds), key)
                         return@handle
                     }
                     if (path !in setOf("/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/systemone") || !running) {
                         call.respondGatewayError(HttpStatusCode.ServiceUnavailable, "No model engine running")
-                        onRequest(RequestRecord(nowIso(), key.name, path, 503, 0, 0, System.currentTimeMillis() - started), key)
+                        onRequest(RequestRecord(nowIso(), key.name, path, 503, 0, 0, timer.elapsedNow().inWholeMilliseconds), key)
                         return@handle
                     }
                     try {
@@ -119,22 +125,21 @@ class ApiGateway(
                                     values.forEach { headers.append(name, it) }
                                 }
                             }
-                            contentType(ContentType.Application.Json)
                             setBody(body)
                         }
                         val responseBytes = upstreamResponse.bodyAsBytes()
                         call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
-                        call.respondBytes(responseBytes, upstreamResponse.contentType() ?: ContentType.Application.Json, upstreamResponse.status)
+                        call.respondBytes(responseBytes, upstreamResponse.contentType() ?: ContentType.Application.Json, status = upstreamResponse.status)
                         val usage = runCatching {
                             val root = json.parseToJsonElement(responseBytes.decodeToString()).jsonObject
                             val value = root["usage"]!!.jsonObject
                             (value["prompt_tokens"] ?: value["input_tokens"])!!.jsonPrimitive.longOrNull to
                                 (value["completion_tokens"] ?: value["output_tokens"])!!.jsonPrimitive.longOrNull
                         }.getOrNull()
-                        onRequest(RequestRecord(nowIso(), key.name, path, upstreamResponse.status.value, usage?.first ?: 0, usage?.second ?: 0, System.currentTimeMillis() - started), key)
+                        onRequest(RequestRecord(nowIso(), key.name, path, upstreamResponse.status.value, usage?.first ?: 0, usage?.second ?: 0, timer.elapsedNow().inWholeMilliseconds), key)
                     } catch (error: Exception) {
                         call.respondGatewayError(HttpStatusCode.BadGateway, "Model engine unavailable: ${error.message.orEmpty()}")
-                        onRequest(RequestRecord(nowIso(), key.name, path, 502, 0, 0, System.currentTimeMillis() - started), key)
+                        onRequest(RequestRecord(nowIso(), key.name, path, 502, 0, 0, timer.elapsedNow().inWholeMilliseconds), key)
                     }
                 }
             }
