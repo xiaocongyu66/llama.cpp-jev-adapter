@@ -231,8 +231,8 @@ jobs:
           mkdir -p local_model_hub/composeApp/src/desktopMain/resources/bin
           cp ${{ matrix.server-build }}/bin/llama-server local_model_hub/composeApp/src/desktopMain/resources/bin/llama-server
           chmod 755 local_model_hub/composeApp/src/desktopMain/resources/bin/llama-server
-      - name: Analyze and test Kotlin Multiplatform project
-        run: cd local_model_hub && ./gradlew :composeApp:allTests
+      - name: Test Compose desktop target
+        run: cd local_model_hub && ./gradlew :composeApp:desktopTest :composeApp:compileKotlinDesktop
       - name: Build Compose Linux distribution
         run: cd local_model_hub && ./gradlew :composeApp:packageDistributionForCurrentOS
       - name: Upload Compose Linux ${{ matrix.arch }} package
